@@ -6,6 +6,14 @@ RFC 3986 compliant URI/URL parsing and manipulation library for Zig.
 > **Current Version:** v0.1.0
 > **GitLab:** [devnw/zig/uri](https://gitlab.com/devnw/zig/uri)
 
+## Status
+
+| Aspect | Info |
+|--------|------|
+| API Stability | Beta |
+| Zig Version | 0.14.0+ |
+| Platforms | Linux, macOS, Windows |
+
 ## Features
 
 - **RFC Compliant**: Strict adherence to RFC 3986 (URI Generic Syntax) and RFC 8141 (URN)
