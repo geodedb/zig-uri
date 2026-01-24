@@ -7,22 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Merge request template for consistent contributions
-- Issue templates for bug reports, features, and questions
-
-### Changed
-- Updated CI catalog components to v1.7.1
-
-### Security
-- Added GitLab native Secret Detection
-- Enabled Advanced SAST and Dependency Scanning
-
-## [0.1.0] - 2026-01-23
+## [0.1.0] - 2026-01-24
 
 Initial public release with RFC 3986 compliant URI parsing.
 
 ### Added
+- Merge request template for consistent contributions
+- Issue templates for bug reports, features, and questions
 - RFC 3986 compliant URI parsing with full component access (scheme, authority, userinfo, host, port, path, query, fragment)
 - RFC 8141 URN support with NID, NSS, and r/q/f-components parsing
 - URI reference resolution per RFC 3986 Section 5
@@ -41,10 +32,13 @@ Initial public release with RFC 3986 compliant URI parsing.
 - Make build targets for development workflow
 
 ### Changed
+- Updated CI catalog components to v1.7.1
 - CI configuration to use DevNW CI Catalog components
 - Runner configuration to use Alpine Linux
 
 ### Security
+- Added GitLab native Secret Detection
+- Enabled Advanced SAST and Dependency Scanning
 - SAST (Static Application Security Testing) integration
 - Secret Detection configuration
 - SBOM (Software Bill of Materials) generation
