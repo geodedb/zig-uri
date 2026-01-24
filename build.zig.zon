@@ -1,0 +1,26 @@
+.{
+    // URI/URL parsing and manipulation library for Zig
+    // RFC 3986 (URI), RFC 3987 (IRI), RFC 6874 (IPv6 Zone ID),
+    // RFC 7320 (URI Design), WHATWG URL Standard compliant
+    .name = .uri,
+
+    // Semantic versioning - https://semver.org/
+    .version = "0.0.0",
+
+    // Unique package fingerprint - do not modify
+    .fingerprint = 0x841cb121b1ce5bcd,
+
+    // Minimum supported Zig version
+    .minimum_zig_version = "0.15.1",
+
+    // Dependencies - none required, zero external dependencies
+    .dependencies = .{},
+
+    // Files included in the package hash
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+    },
+}

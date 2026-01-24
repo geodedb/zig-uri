@@ -1,0 +1,36 @@
+# Zig build artifacts
+zig-out/
+zig-cache/
+.zig-cache/
+
+# Editor and IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Nix
+.direnv/
+result
+result-*
+
+# Coverage
+coverage/
+*.profraw
+*.profdata
+
+# Debug files
+*.dSYM/
+*.pdb
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
