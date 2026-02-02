@@ -125,6 +125,9 @@ pub const registry = @import("registry.zig");
 /// Debug output utilities for URI structures.
 pub const debug = @import("debug.zig");
 
+/// Parallel processing utilities for batch URI operations.
+pub const parallel = @import("parallel.zig");
+
 // =============================================================================
 // Public Type Re-exports
 // =============================================================================

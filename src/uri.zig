@@ -950,9 +950,10 @@ test "defaultPort" {
 
 test "percentEncode" {
     const allocator = std.testing.allocator;
+    // RFC 3986: '!' is a sub-delim, allowed in paths without encoding
     const encoded = try percentEncode(allocator, "hello world!", .path);
     defer allocator.free(encoded);
-    try std.testing.expectEqualStrings("hello%20world%21", encoded);
+    try std.testing.expectEqualStrings("hello%20world!", encoded);
 }
 
 test "percentDecode" {

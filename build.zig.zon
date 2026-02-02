@@ -13,8 +13,14 @@
     // Minimum supported Zig version
     .minimum_zig_version = "0.15.1",
 
-    // Dependencies - none required, zero external dependencies
-    .dependencies = .{},
+    // Dependencies
+    .dependencies = .{
+        // Spice heartbeat scheduling for parallel operations
+        .spice = .{
+            .url = "https://gitlab.com/devnw/zig/spice/-/archive/main/spice-main.tar.gz",
+            .hash = "spice-0.0.0-HnDb57y0AABlp7AaQKAkMShWpww-Tl_8QM7T-1Lx3auu",
+        },
+    },
 
     // Files included in the package hash
     .paths = .{
