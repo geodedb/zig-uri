@@ -29,9 +29,11 @@ zig build run-examples
 ## Examples Overview
 
 ### 01_basic_parsing.zig
+
 **Basic URI Parsing and Component Access**
 
 Learn how to:
+
 - Parse URIs with `uri.parse()`
 - Access all URI components (scheme, host, port, path, query, fragment)
 - Handle relative references
@@ -39,63 +41,77 @@ Learn how to:
 - Get default ports for common schemes
 
 ### 02_uri_resolution.zig
+
 **URI Reference Resolution (RFC 3986 Section 5)**
 
 Learn how to:
+
 - Resolve relative URIs against a base URI
 - Handle all RFC 3986 resolution cases
 - Build API endpoint URLs
 - Resolve links on web pages
 
 ### 03_percent_encoding.zig
+
 **Percent-Encoding and Decoding**
 
 Learn how to:
+
 - Encode strings for different URI components
 - Decode percent-encoded strings
 - Handle special characters properly
 - Avoid double-encoding issues
 
 ### 04_urn_parsing.zig
+
 **URN Parsing (RFC 8141)**
 
 Learn how to:
+
 - Parse Uniform Resource Names
 - Access URN components (NID, NSS, r/q/f-components)
 - Work with common URN namespaces (ISBN, UUID, IETF)
 - Distinguish URNs from URLs
 
 ### 05_resource_registry.zig
+
 **Resource Registry**
 
 Learn how to:
+
 - Store and retrieve resources by URI
 - Work with named anchors in documents
 - Configure capacity limits
 - Handle registry errors
 
 ### 06_normalization.zig
+
 **URI Normalization (RFC 3986 Section 6)**
 
 Learn how to:
+
 - Normalize URIs to canonical form
 - Handle case normalization
 - Remove dot segments from paths
 - Compare equivalent URIs
 
 ### 07_validation.zig
+
 **URI Validation Utilities**
 
 Learn how to:
+
 - Validate URI strings
 - Check if URIs are absolute or relative
 - Handle parse errors gracefully
 - Build custom validation logic
 
 ### 08_debug_output.zig
+
 **Debug Output Utilities**
 
 Learn how to:
+
 - Generate JSON output for URIs
 - Use pretty-printed JSON for debugging
 - Compare URIs using JSON representation

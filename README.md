@@ -11,18 +11,18 @@ RFC 3986 compliant URI/URL parsing and manipulation library for Zig.
 | Aspect | Info |
 |--------|------|
 | API Stability | Beta |
-| Zig Version | 0.14.0+ |
+| Zig Version | 0.15.1+ |
 | Platforms | Linux, macOS, Windows |
 
 ## Features
 
 - **RFC Compliant**: Strict adherence to RFC 3986 (URI Generic Syntax) and RFC 8141 (URN)
-- **Zero Dependencies**: Uses only Zig standard library
+- **Minimal Dependencies**: Core parsing uses only Zig standard library; optional `spice` dependency for parallel batch operations
 - **Zero-Copy Parsing**: No allocations for basic parsing operations
 - **Cross-Platform**: Works on all Zig-supported targets
 - **Full Component Access**: Scheme, authority, userinfo, host, port, path, query, fragment
 - **URI Resolution**: RFC 3986 Section 5 reference resolution algorithm
-- **Normalization**: Case and path normalization per RFC 3986 Section 6
+- **Normalization**: Case, percent-encoding, path, and scheme-based normalization per RFC 3986 Section 6
 - **Percent-Encoding**: Complete encode/decode support
 - **Parse Options**: Strict/allow_spaces/iri_mode validation applied on input
 - **Component-Aware Encoding**: Percent-encoding respects URI component rules
@@ -156,9 +156,9 @@ Core URI parsing and manipulation functionality.
 
 Improved validation and encoding options.
 
-- [ ] ParseOptions implementation ([#8](https://gitlab.com/devnw/zig/uri/-/issues/8))
-- [ ] Component-specific encoding rules ([#9](https://gitlab.com/devnw/zig/uri/-/issues/9))
-- [ ] Enhanced percent-encoding normalization ([#10](https://gitlab.com/devnw/zig/uri/-/issues/10))
+- [x] ParseOptions implementation ([#8](https://gitlab.com/devnw/zig/uri/-/issues/8))
+- [x] Component-specific encoding rules ([#9](https://gitlab.com/devnw/zig/uri/-/issues/9))
+- [x] Enhanced percent-encoding normalization ([#10](https://gitlab.com/devnw/zig/uri/-/issues/10))
 - [ ] Query string parsing ([#11](https://gitlab.com/devnw/zig/uri/-/issues/11))
 - [ ] URI builder API ([#12](https://gitlab.com/devnw/zig/uri/-/issues/12))
 
@@ -186,10 +186,10 @@ Production-ready release.
 - [ ] Complete documentation ([#20](https://gitlab.com/devnw/zig/uri/-/issues/20))
 - [ ] Performance benchmarks ([#21](https://gitlab.com/devnw/zig/uri/-/issues/21))
 - [ ] CI/CD pipeline ([#22](https://gitlab.com/devnw/zig/uri/-/issues/22))
-- [ ] Zig package registry ([#23](https://gitlab.com/devnw/zig/uri/-/issues/23))
-- [ ] Scheme-based normalization ([#24](https://gitlab.com/devnw/zig/uri/-/issues/24))
-- [ ] Streaming parser ([#25](https://gitlab.com/devnw/zig/uri/-/issues/25))
-- [ ] WebAssembly target ([#26](https://gitlab.com/devnw/zig/uri/-/issues/26))
+- [ ] Package publishing setup ([#26](https://gitlab.com/devnw/zig/uri/-/issues/26))
+- [x] Scheme-based normalization ([#29](https://gitlab.com/devnw/zig/uri/-/issues/29))
+- [ ] Streaming parser ([#27](https://gitlab.com/devnw/zig/uri/-/issues/27))
+- [ ] WebAssembly target ([#28](https://gitlab.com/devnw/zig/uri/-/issues/28))
 
 ## RFC Compliance
 
@@ -283,8 +283,8 @@ Contributions are welcome! Please see our [open issues](https://gitlab.com/devnw
 
 ### Priority Areas
 
-- [ParseOptions implementation](https://gitlab.com/devnw/zig/uri/-/issues/8)
-- [Component-specific encoding](https://gitlab.com/devnw/zig/uri/-/issues/9)
+- [Query string parsing](https://gitlab.com/devnw/zig/uri/-/issues/11)
+- [URI builder API](https://gitlab.com/devnw/zig/uri/-/issues/12)
 - [IRI support](https://gitlab.com/devnw/zig/uri/-/issues/13)
 - [WHATWG compatibility](https://gitlab.com/devnw/zig/uri/-/issues/19)
 

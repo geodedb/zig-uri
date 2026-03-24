@@ -19,7 +19,11 @@ Complete API reference for the URI library.
 
 ### Uri
 
-The main parsed URI structure. All string fields are slices into the original input string (zero-copy).
+The main parsed URI structure. When returned by `parse()`, string fields are
+borrowed slices into the original input (zero-copy). When returned by
+`resolve()`, `normalize()`, or `dupe()`, all string fields are independently
+allocated copies and `owned` is `true` -- the caller must call `deinit()` to
+free the memory.
 
 ```zig
 pub const Uri = struct {
@@ -46,6 +50,17 @@ pub const Uri = struct {
 
     /// URN components (if scheme is "urn")
     urn: ?UrnComponents = null,
+
+    /// Raw port string before parsing to integer
+    raw_port: ?[]const u8 = null,
+
+    /// Original input string
+    raw: []const u8 = "",
+
+    /// Whether this Uri owns its string memory.
+    /// When true (from resolve/normalize/dupe), deinit() frees all fields.
+    /// When false (from parse), fields are borrowed and deinit() is a no-op.
+    owned: bool = false,
 };
 ```
 
@@ -88,14 +103,13 @@ pub const ParseError = error{
     InvalidPort,
     PortOutOfRange,
     InvalidHost,
-    InvalidIPv6,
-    InvalidIPv4,
-    EmptyScheme,
-    MissingHost,
     UnclosedIPv6Bracket,
     OutOfMemory,
+    InputTooLong,
 };
 ```
+
+- `InputTooLong`: Input exceeds the configured `max_input_len` limit
 
 ### Component
 
@@ -124,6 +138,7 @@ pub fn parse(input: []const u8) ParseError!Uri
 Parse a URI string into its components.
 
 **Example:**
+
 ```zig
 const uri = @import("uri");
 
@@ -149,6 +164,22 @@ Parse a URI with configurable validation mode.
 - `allow_spaces = true` permits literal spaces in the input.
 - `iri_mode = true` allows non-ASCII bytes (RFC 3987 style input).
 
+### ParseOptions
+
+```zig
+pub const ParseOptions = struct {
+    strict: bool = true,
+    allow_spaces: bool = false,
+    iri_mode: bool = false,
+    max_input_len: ?usize = null,
+};
+```
+
+- `strict`: Enable full RFC 3986 character validation (default: `true`)
+- `allow_spaces`: Accept unencoded spaces in URI components (default: `false`)
+- `iri_mode`: Accept valid UTF-8 sequences per RFC 3987 (default: `false`)
+- `max_input_len`: Maximum input length in bytes; `null` for no limit (default: `null`)
+
 ## Resolution Functions
 
 ### resolve
@@ -159,12 +190,19 @@ pub fn resolve(allocator: Allocator, base: Uri, reference: Uri) !Uri
 
 Resolve a URI reference against a base URI (RFC 3986 Section 5).
 
+**Ownership:** The returned `Uri` has `owned = true`. All string fields (`scheme`,
+`host`, `path`, `query`, `fragment`, `userinfo`, `raw_port`, `raw`) are
+independently allocated copies. The caller must call `deinit()` to free the
+memory. Because all fields are owned, the resolved URI remains valid even after
+the base and reference URIs go out of scope.
+
 **Example:**
+
 ```zig
 const base = try uri.parse("http://example.com/a/b/c");
 const reference = try uri.parse("../d");
-const resolved = try uri.resolve(allocator, base, reference);
-defer allocator.free(resolved.path);
+var resolved = try uri.resolve(allocator, base, reference);
+defer resolved.deinit(allocator);
 // resolved path = "/a/d"
 ```
 
@@ -186,11 +224,12 @@ pub fn normalize(allocator: Allocator, uri_input: Uri) !Uri
 
 Normalize a URI (RFC 3986 Section 6).
 
-Current normalizations:
-- Case normalization (scheme, host to lowercase)
-- Dot segment removal from path
+Normalizations applied:
 
-> **Future enhancements:** See [#10](https://gitlab.com/devnw/zig/uri/-/issues/10).
+1. Case normalization (scheme and host to lowercase)
+2. Percent-encoding normalization (decode unreserved characters, uppercase hex digits)
+3. Path segment normalization (remove dot segments)
+4. Scheme-based normalization (remove default ports, ensure non-empty path with authority)
 
 ## Encoding Functions
 
@@ -202,9 +241,8 @@ pub fn percentEncode(allocator: Allocator, input: []const u8, component: Compone
 
 Percent-encode a string for use in a URI component.
 
-> **Note:** Component-specific rules not yet implemented. See [#9](https://gitlab.com/devnw/zig/uri/-/issues/9).
-
 **Example:**
+
 ```zig
 const encoded = try uri.percentEncode(allocator, "hello world!", .path);
 defer allocator.free(encoded);
@@ -220,6 +258,7 @@ pub fn percentDecode(allocator: Allocator, input: []const u8) ![]u8
 Decode a percent-encoded string.
 
 **Example:**
+
 ```zig
 const decoded = try uri.percentDecode(allocator, "hello%20world%21");
 defer allocator.free(decoded);

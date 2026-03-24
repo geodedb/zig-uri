@@ -65,8 +65,8 @@ pub fn main() !void {
 
     for (test_cases) |tc| {
         const ref = try uri.parse(tc.reference);
-        const resolved = try uri.resolve(allocator, base, ref);
-        defer allocator.free(resolved.path);
+        var resolved = try uri.resolve(allocator, base, ref);
+        defer resolved.deinit(allocator);
 
         // Format the resolved URI to a string for display
         var result_buf = std.array_list.Managed(u8).init(allocator);
@@ -96,8 +96,8 @@ pub fn main() !void {
 
     for (links) |link| {
         const ref = try uri.parse(link);
-        const resolved = try uri.resolve(allocator, page_base, ref);
-        defer allocator.free(resolved.path);
+        var resolved = try uri.resolve(allocator, page_base, ref);
+        defer resolved.deinit(allocator);
 
         var result_buf = std.array_list.Managed(u8).init(allocator);
         defer result_buf.deinit();
@@ -123,8 +123,8 @@ pub fn main() !void {
 
     for (endpoints) |endpoint| {
         const ref = try uri.parse(endpoint);
-        const resolved = try uri.resolve(allocator, api_base, ref);
-        defer allocator.free(resolved.path);
+        var resolved = try uri.resolve(allocator, api_base, ref);
+        defer resolved.deinit(allocator);
 
         var result_buf = std.array_list.Managed(u8).init(allocator);
         defer result_buf.deinit();

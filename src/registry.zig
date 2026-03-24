@@ -87,6 +87,12 @@ pub const Resource = struct {
 };
 
 /// URI Resource Registry
+///
+/// Thread Safety: This type is NOT thread-safe. Concurrent access from
+/// multiple threads requires external synchronization (e.g., a mutex).
+/// All mutating operations (register, remove, addAnchor) as well as
+/// reads (get, getAnchorContent, contains, stats) must be serialized
+/// when the registry is shared across threads.
 pub const Registry = struct {
     allocator: Allocator,
     resources: std.StringHashMap(Resource),
@@ -156,6 +162,7 @@ pub const Registry = struct {
             self.allocator.dupe(u8, ct) catch return RegistryError.OutOfMemory
         else
             null;
+        errdefer if (ct_copy) |ct| self.allocator.free(ct);
 
         const resource = Resource{
             .uri = uri_copy,
@@ -219,6 +226,7 @@ pub const Registry = struct {
         }
 
         const name_copy = self.allocator.dupe(u8, anchor_name) catch return RegistryError.OutOfMemory;
+        errdefer self.allocator.free(name_copy);
         resource.anchors.put(name_copy, Anchor{
             .name = name_copy,
             .offset = offset,
@@ -231,11 +239,12 @@ pub const Registry = struct {
         const resource = self.resources.getPtr(uri_str) orelse return RegistryError.DocumentNotFound;
         const anchor = resource.anchors.get(anchor_name) orelse return RegistryError.AnchorNotFound;
 
-        if (anchor.offset + anchor.length > resource.content.len) {
+        const end = std.math.add(usize, anchor.offset, anchor.length) catch return RegistryError.AnchorNotFound;
+        if (end > resource.content.len) {
             return RegistryError.AnchorNotFound;
         }
 
-        return resource.content[anchor.offset .. anchor.offset + anchor.length];
+        return resource.content[anchor.offset..end];
     }
 
     /// Get registry statistics
@@ -327,4 +336,33 @@ test "Registry remove" {
 
     // Remove non-existent should return false
     try std.testing.expect(!registry.remove("https://example.com/nonexistent"));
+}
+
+test "Registry anchor overflow offset+length returns error" {
+    const allocator = std.testing.allocator;
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+
+    const content = "Short";
+    try registry.register("https://example.com/doc", content, null);
+
+    // Add an anchor with values that would overflow when added together
+    // std.math.maxInt(usize) + 1 overflows
+    try registry.addAnchor("https://example.com/doc", "overflow", std.math.maxInt(usize), 1);
+
+    // Getting anchor content should return AnchorNotFound due to overflow, not wrap around
+    try std.testing.expectError(RegistryError.AnchorNotFound, registry.getAnchorContent("https://example.com/doc", "overflow"));
+}
+
+test "Registry anchor offset beyond content returns error" {
+    const allocator = std.testing.allocator;
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+
+    const content = "Hello";
+    try registry.register("https://example.com/doc", content, null);
+
+    // Anchor that extends beyond content
+    try registry.addAnchor("https://example.com/doc", "bad", 3, 10);
+    try std.testing.expectError(RegistryError.AnchorNotFound, registry.getAnchorContent("https://example.com/doc", "bad"));
 }

@@ -11,7 +11,7 @@
 If you discover a security vulnerability, please report it responsibly:
 
 1. **Do not** open a public issue
-2. Email security concerns to: security@codepros.dev
+2. Email security concerns to: <security@codepros.dev>
 3. Include:
    - Description of the vulnerability
    - Steps to reproduce
@@ -25,18 +25,21 @@ We will acknowledge receipt within 48 hours and provide a detailed response with
 This project implements the following security measures:
 
 ### CI/CD Security Scanning
+
 - **SAST**: Static Application Security Testing via GitLab
 - **Secret Detection**: Automated scanning for hardcoded secrets
 - **License Scanning**: Compliance verification for dependencies
 - **Gitleaks**: Enhanced secrets detection
 
 ### Code Security
+
 - Memory-safe Zig implementation
-- No external C dependencies (stdlib only)
+- No external C dependencies. Core parsing uses Zig standard library only; optional `spice` dependency (Zig library, pinned to immutable commit SHA) for parallel batch operations
 - Compile-time safety checks enabled
-- Fuzz testing for parser inputs
+- Fuzz testing for parser inputs (planned)
 
 ### Release Security
+
 - All releases are tagged and signed
 - SPDX license identifiers in all source files
 - Apache-2.0 license
@@ -44,4 +47,3 @@ This project implements the following security measures:
 ## Security Updates
 
 Security updates will be released as patch versions. Subscribe to releases to be notified.
-

@@ -67,8 +67,8 @@ test "T2.1: Resolve relative path against base" {
     const base = try uri.parse("http://example.com/a/b/c");
     const reference = try uri.parse("../d");
 
-    const resolved = try uri.resolve(allocator, base, reference);
-    defer allocator.free(resolved.path);
+    var resolved = try uri.resolve(allocator, base, reference);
+    defer resolved.deinit(allocator);
 
     try std.testing.expectEqualStrings("http", resolved.scheme.?);
     try std.testing.expectEqualStrings("example.com", resolved.host.?);
@@ -80,8 +80,8 @@ test "T2.2: Resolve absolute path against base" {
     const base = try uri.parse("http://example.com/a/b/c");
     const reference = try uri.parse("/x/y/z");
 
-    const resolved = try uri.resolve(allocator, base, reference);
-    defer allocator.free(resolved.path);
+    var resolved = try uri.resolve(allocator, base, reference);
+    defer resolved.deinit(allocator);
 
     try std.testing.expectEqualStrings("/x/y/z", resolved.path);
 }
@@ -91,8 +91,8 @@ test "T2.3: Resolve with query" {
     const base = try uri.parse("http://example.com/a/b");
     const reference = try uri.parse("?query");
 
-    const resolved = try uri.resolve(allocator, base, reference);
-    defer allocator.free(resolved.path);
+    var resolved = try uri.resolve(allocator, base, reference);
+    defer resolved.deinit(allocator);
 
     try std.testing.expectEqualStrings("/a/b", resolved.path);
     try std.testing.expectEqualStrings("query", resolved.query.?);
@@ -103,8 +103,8 @@ test "T2.4: Resolve reference with scheme" {
     const base = try uri.parse("http://example.com/a/b");
     const reference = try uri.parse("https://other.com/x/y");
 
-    const resolved = try uri.resolve(allocator, base, reference);
-    defer allocator.free(resolved.path);
+    var resolved = try uri.resolve(allocator, base, reference);
+    defer resolved.deinit(allocator);
 
     try std.testing.expectEqualStrings("https", resolved.scheme.?);
     try std.testing.expectEqualStrings("other.com", resolved.host.?);
@@ -144,8 +144,8 @@ test "T2.5: RFC 3986 Section 5.4 examples" {
 
     inline for (test_cases) |tc| {
         const reference = try uri.parse(tc[0]);
-        const resolved = try uri.resolve(allocator, base, reference);
-        defer allocator.free(resolved.path);
+        var resolved = try uri.resolve(allocator, base, reference);
+        defer resolved.deinit(allocator);
 
         // For references with authority, check host
         if (tc[0].len >= 2 and tc[0][0] == '/' and tc[0][1] == '/') {

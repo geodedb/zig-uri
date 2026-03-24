@@ -49,9 +49,9 @@ This document details the RFC compliance status of the URI library.
 | Feature | Status | Notes |
 |---------|--------|-------|
 | 6.2.2.1 Case Normalization | ✅ Implemented | Scheme, host |
-| 6.2.2.2 Percent-Encoding | 🔄 Partial | See [#10](https://gitlab.com/devnw/zig/uri/-/issues/10) |
+| 6.2.2.2 Percent-Encoding | ✅ Implemented | Decode unreserved, uppercase hex |
 | 6.2.2.3 Path Segment | ✅ Implemented | Dot removal |
-| 6.2.3 Scheme-Based | ❌ Not yet | Default port removal |
+| 6.2.3 Scheme-Based | ✅ Implemented | Default port removal, empty path |
 
 ## RFC 8141 - URN Syntax
 

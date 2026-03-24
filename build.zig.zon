@@ -1,7 +1,7 @@
 .{
     // URI/URL parsing and manipulation library for Zig
-    // RFC 3986 (URI), RFC 3987 (IRI), RFC 6874 (IPv6 Zone ID),
-    // RFC 7320 (URI Design), WHATWG URL Standard compliant
+    // Implements: RFC 3986 (URI), RFC 8141 (URN)
+    // Planned: RFC 3987 (IRI), RFC 6874 (IPv6 Zone ID), WHATWG URL Standard
     .name = .uri,
 
     // Semantic versioning - https://semver.org/
@@ -16,8 +16,10 @@
     // Dependencies
     .dependencies = .{
         // Spice heartbeat scheduling for parallel operations
+        // Pinned to commit bbf106dc8131a514a4d1687cc2173f124f5c8181 on main.
+        // TODO: Update to a tagged release when upstream publishes one.
         .spice = .{
-            .url = "https://gitlab.com/devnw/zig/spice/-/archive/main/spice-main.tar.gz",
+            .url = "https://gitlab.com/devnw/zig/spice/-/archive/bbf106dc8131a514a4d1687cc2173f124f5c8181/spice-bbf106dc8131a514a4d1687cc2173f124f5c8181.tar.gz",
             .hash = "spice-0.0.0-HnDb58jJAACojBd1dquGT-Ngc6TORlC6izlAKf0f4Rno",
         },
     },

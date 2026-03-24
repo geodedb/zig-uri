@@ -553,9 +553,9 @@ test "Data URLs" {
         .{ .input = "data:,Hello%2C%20World!", .scheme = "data", .path = ",Hello%2C%20World!" },
         .{ .input = "data:text/plain,Hello", .scheme = "data", .path = "text/plain,Hello" },
         .{ .input = "data:text/plain;charset=utf-8,Hello", .scheme = "data", .path = "text/plain;charset=utf-8,Hello" },
-        .{ .input = "data:text/html,<h1>Hello</h1>", .scheme = "data", .path = "text/html,<h1>Hello</h1>" },
+        .{ .input = "data:text/html,%3Ch1%3EHello%3C/h1%3E", .scheme = "data", .path = "text/html,%3Ch1%3EHello%3C/h1%3E" },
         .{ .input = "data:image/png;base64,iVBORw0KGgo=", .scheme = "data", .path = "image/png;base64,iVBORw0KGgo=" },
-        .{ .input = "data:application/json,{\"key\":\"value\"}", .scheme = "data", .path = "application/json,{\"key\":\"value\"}" },
+        .{ .input = "data:application/json,%7B%22key%22:%22value%22%7D", .scheme = "data", .path = "application/json,%7B%22key%22:%22value%22%7D" },
     };
     for (cases) |tc| try runTestCase(tc);
 }

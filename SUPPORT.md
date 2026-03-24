@@ -36,4 +36,4 @@ This is an open source project maintained by volunteers. We aim to:
 - Provide initial response within 2 weeks
 - No guaranteed SLA for fixes
 
-For commercial support inquiries, contact: support@devnw.com
+For commercial support inquiries, contact: <support@devnw.com>

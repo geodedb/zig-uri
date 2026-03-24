@@ -49,6 +49,7 @@
 
 const std = @import("std");
 const build_options = @import("build_options");
+const uri_mod = @import("uri.zig");
 
 const spice = if (build_options.enable_spice) @import("spice") else struct {
     pub const ThreadPool = void;
@@ -64,22 +65,58 @@ const spice = if (build_options.enable_spice) @import("spice") else struct {
 // Global Thread Pool
 // ============================================================================
 
+// Thread pool uses `page_allocator` for internal allocations. This is
+// thread-safe by design (each allocation is a direct `mmap`/`munmap`
+// syscall) and requires no additional synchronization. The tradeoff is
+// higher per-allocation overhead compared to a userspace allocator such
+// as `GeneralPurposeAllocator` or `smp_allocator`. For the thread pool's
+// infrequent, large allocations this is acceptable; switching to a
+// faster allocator would reduce syscall overhead but add complexity
+// and an additional dependency.
 var global_pool: if (build_options.enable_spice) ?spice.ThreadPool else void = if (build_options.enable_spice) null else {};
 var pool_mutex: std.Thread.Mutex = .{};
 
+/// Atomic flag indicating whether `global_pool` has been initialized.
+/// Used as a fast-path check to avoid acquiring `pool_mutex` on every
+/// call to `getPool()` after the pool is already running.
+var pool_initialized: bool = false;
+
+/// Return a pointer to the lazily-initialized global thread pool.
+///
+/// Uses double-checked locking so that, after the first initialization,
+/// subsequent calls only perform an atomic load (no mutex acquisition).
+///
+/// Thread safety: safe to call concurrently from any number of threads.
 pub fn getPool() if (build_options.enable_spice) *spice.ThreadPool else void {
     if (!build_options.enable_spice) return;
 
+    // Fast path: pool already initialized -- atomic load avoids mutex.
+    if (@atomicLoad(bool, &pool_initialized, .acquire)) {
+        return &global_pool.?;
+    }
+
+    // Slow path: acquire the mutex and initialize if still needed.
     pool_mutex.lock();
     defer pool_mutex.unlock();
 
     if (global_pool == null) {
         global_pool = spice.ThreadPool.init(std.heap.page_allocator);
         global_pool.?.start(.{});
+        @atomicStore(bool, &pool_initialized, true, .release);
     }
     return &global_pool.?;
 }
 
+/// Tear down the global thread pool and release its resources.
+///
+/// **Lifecycle constraint:** This function must NOT be called while any
+/// parallel operations (e.g., `parseUris`, `validateUris`, `normalizeUris`)
+/// are still in flight. Callers must ensure that every batch operation has
+/// returned before calling `deinitPool()`. Violating this invariant causes
+/// undefined behavior (use-after-free on the pool).
+///
+/// After `deinitPool()` returns, a subsequent call to `getPool()` will
+/// transparently re-initialize a fresh pool.
 pub fn deinitPool() void {
     if (!build_options.enable_spice) return;
 
@@ -87,6 +124,7 @@ pub fn deinitPool() void {
     defer pool_mutex.unlock();
 
     if (global_pool) |*pool| {
+        @atomicStore(bool, &pool_initialized, false, .release);
         pool.deinit();
         global_pool = null;
     }
@@ -113,8 +151,8 @@ pub const ParseResult = struct {
     components: ?UriComponents,
     /// Whether parsing succeeded
     success: bool,
-    /// Error code (0 = success)
-    error_code: u8,
+    /// Error message (null on success)
+    error_msg: ?[]const u8,
 };
 
 /// Context for parallel parsing
@@ -187,112 +225,44 @@ fn parseTask(t: *spice.Task, ctx: ParseContext) void {
     }
 }
 
+/// Parse a single URI by delegating to the core uri.zig parser.
 fn parseUri(input: []const u8) ParseResult {
-    if (input.len == 0) {
+    const parsed = uri_mod.parse(input) catch |err| {
         return .{
-            .components = .{
-                .scheme = null,
-                .userinfo = null,
-                .host = null,
-                .port = null,
-                .path = "",
-                .query = null,
-                .fragment = null,
-            },
-            .success = true,
-            .error_code = 0,
+            .components = null,
+            .success = false,
+            .error_msg = parseErrorMessage(err),
         };
-    }
-
-    var remaining = input;
-    var components = UriComponents{
-        .scheme = null,
-        .userinfo = null,
-        .host = null,
-        .port = null,
-        .path = "",
-        .query = null,
-        .fragment = null,
     };
 
-    // Extract fragment
-    if (std.mem.indexOf(u8, remaining, "#")) |frag_pos| {
-        components.fragment = remaining[frag_pos + 1 ..];
-        remaining = remaining[0..frag_pos];
-    }
-
-    // Extract query
-    if (std.mem.indexOf(u8, remaining, "?")) |query_pos| {
-        components.query = remaining[query_pos + 1 ..];
-        remaining = remaining[0..query_pos];
-    }
-
-    // Extract scheme
-    if (std.mem.indexOf(u8, remaining, ":")) |colon_pos| {
-        const potential_scheme = remaining[0..colon_pos];
-        var valid_scheme = potential_scheme.len > 0;
-        for (potential_scheme) |c| {
-            if (!std.ascii.isAlphanumeric(c) and c != '+' and c != '-' and c != '.') {
-                valid_scheme = false;
-                break;
-            }
-        }
-        if (valid_scheme and potential_scheme.len > 0 and std.ascii.isAlphabetic(potential_scheme[0])) {
-            components.scheme = potential_scheme;
-            remaining = remaining[colon_pos + 1 ..];
-        }
-    }
-
-    // Extract authority
-    if (remaining.len >= 2 and remaining[0] == '/' and remaining[1] == '/') {
-        remaining = remaining[2..];
-        const auth_end = std.mem.indexOfAny(u8, remaining, "/?#") orelse remaining.len;
-        const authority = remaining[0..auth_end];
-
-        // Extract userinfo
-        if (std.mem.indexOf(u8, authority, "@")) |at_pos| {
-            components.userinfo = authority[0..at_pos];
-            const host_port = authority[at_pos + 1 ..];
-            parseHostPort(host_port, &components);
-        } else {
-            parseHostPort(authority, &components);
-        }
-
-        remaining = remaining[auth_end..];
-    }
-
-    // Remaining is path
-    components.path = remaining;
-
     return .{
-        .components = components,
+        .components = .{
+            .scheme = parsed.scheme,
+            .userinfo = parsed.userinfo,
+            .host = parsed.host,
+            .port = parsed.port,
+            .path = parsed.path,
+            .query = parsed.query,
+            .fragment = parsed.fragment,
+        },
         .success = true,
-        .error_code = 0,
+        .error_msg = null,
     };
 }
 
-fn parseHostPort(host_port: []const u8, components: *UriComponents) void {
-    if (host_port.len == 0) return;
-
-    // Handle IPv6 addresses [...]
-    if (host_port[0] == '[') {
-        if (std.mem.indexOf(u8, host_port, "]")) |bracket_end| {
-            components.host = host_port[0 .. bracket_end + 1];
-            if (bracket_end + 1 < host_port.len and host_port[bracket_end + 1] == ':') {
-                const port_str = host_port[bracket_end + 2 ..];
-                components.port = std.fmt.parseInt(u16, port_str, 10) catch null;
-            }
-        }
-    } else {
-        // Regular host:port
-        if (std.mem.lastIndexOf(u8, host_port, ":")) |colon_pos| {
-            components.host = host_port[0..colon_pos];
-            const port_str = host_port[colon_pos + 1 ..];
-            components.port = std.fmt.parseInt(u16, port_str, 10) catch null;
-        } else {
-            components.host = host_port;
-        }
-    }
+/// Convert a ParseError to a human-readable error message.
+fn parseErrorMessage(err: uri_mod.ParseError) []const u8 {
+    return switch (err) {
+        error.InvalidCharacter => "Invalid character in URI",
+        error.InvalidPercentEncoding => "Invalid percent encoding",
+        error.InvalidScheme => "Invalid scheme",
+        error.InvalidPort => "Invalid port number",
+        error.PortOutOfRange => "Port number out of range (0-65535)",
+        error.InvalidHost => "Invalid host format",
+        error.UnclosedIPv6Bracket => "Unclosed bracket in IPv6 address",
+        error.OutOfMemory => "Out of memory",
+        error.InputTooLong => "Input exceeds maximum allowed length",
+    };
 }
 
 // ============================================================================
@@ -303,9 +273,7 @@ fn parseHostPort(host_port: []const u8, components: *UriComponents) void {
 pub const ValidateResult = struct {
     /// Whether URI is valid
     valid: bool,
-    /// Error code (0 = valid)
-    error_code: u8,
-    /// Error description
+    /// Error description (null when valid)
     error_msg: ?[]const u8,
 };
 
@@ -379,49 +347,16 @@ fn validateTask(t: *spice.Task, ctx: ValidateContext) void {
     }
 }
 
+/// Validate a single URI by delegating to the core uri.zig parser.
 fn validateUri(input: []const u8) ValidateResult {
-    // Empty URI is valid (empty reference)
-    if (input.len == 0) {
-        return .{ .valid = true, .error_code = 0, .error_msg = null };
-    }
+    _ = uri_mod.parse(input) catch |err| {
+        return .{
+            .valid = false,
+            .error_msg = parseErrorMessage(err),
+        };
+    };
 
-    // Check for invalid characters
-    for (input) |c| {
-        if (c < 0x21 or c == 0x7F) {
-            if (c != ' ') { // Space might be allowed in lenient mode
-                return .{ .valid = false, .error_code = 1, .error_msg = "Invalid character in URI" };
-            }
-        }
-    }
-
-    // Check scheme if present
-    if (std.mem.indexOf(u8, input, ":")) |colon_pos| {
-        const scheme = input[0..colon_pos];
-        if (scheme.len == 0) {
-            return .{ .valid = false, .error_code = 2, .error_msg = "Empty scheme" };
-        }
-        if (!std.ascii.isAlphabetic(scheme[0])) {
-            return .{ .valid = false, .error_code = 3, .error_msg = "Scheme must start with letter" };
-        }
-    }
-
-    // Basic percent-encoding validation
-    var i: usize = 0;
-    while (i < input.len) {
-        if (input[i] == '%') {
-            if (i + 2 >= input.len) {
-                return .{ .valid = false, .error_code = 4, .error_msg = "Incomplete percent encoding" };
-            }
-            if (!std.ascii.isHex(input[i + 1]) or !std.ascii.isHex(input[i + 2])) {
-                return .{ .valid = false, .error_code = 5, .error_msg = "Invalid percent encoding" };
-            }
-            i += 3;
-        } else {
-            i += 1;
-        }
-    }
-
-    return .{ .valid = true, .error_code = 0, .error_msg = null };
+    return .{ .valid = true, .error_msg = null };
 }
 
 // ============================================================================
@@ -434,8 +369,8 @@ pub const NormalizeResult = struct {
     normalized: ?[]u8,
     /// Whether normalization succeeded
     success: bool,
-    /// Error code (0 = success)
-    error_code: u8,
+    /// Error message (null on success)
+    error_msg: ?[]const u8,
 };
 
 /// Context for parallel normalization
@@ -452,10 +387,17 @@ const NormalizeContext = struct {
 /// Normalize multiple URIs in parallel.
 ///
 /// Applies RFC 3986 normalization: lowercase scheme/host,
-/// remove default ports, normalize percent-encoding.
+/// normalize percent-encoding, remove dot segments.
 ///
 /// Parameters:
-/// - allocator: Memory allocator for normalized strings
+/// - allocator: Memory allocator for normalized strings.
+///   **Thread-safety requirement:** When spice is enabled and the input
+///   length meets the parallel threshold (>= 8), this allocator is used
+///   concurrently from multiple worker threads. It **must** be thread-safe.
+///   Suitable allocators include `std.heap.page_allocator` and
+///   `std.heap.GeneralPurposeAllocator` (thread-safe by default). An
+///   allocator that is NOT thread-safe (e.g., a bare `ArenaAllocator` or
+///   `FixedBufferAllocator`) will cause data races.
 /// - inputs: Array of URI strings
 /// - results: Array to store normalization results
 ///
@@ -515,116 +457,66 @@ fn normalizeTask(t: *spice.Task, ctx: NormalizeContext) void {
     }
 }
 
+/// Normalize a single URI by delegating to the core uri.zig parser and normalizer.
 fn normalizeUri(allocator: std.mem.Allocator, input: []const u8) NormalizeResult {
-    if (input.len == 0) {
-        return .{ .normalized = allocator.dupe(u8, "") catch null, .success = true, .error_code = 0 };
-    }
-
-    // Simple normalization: lowercase scheme and host
-    var result: std.ArrayListUnmanaged(u8) = .{};
-    errdefer result.deinit(allocator);
-
-    const parse_result = parseUri(input);
-    if (!parse_result.success) {
-        return .{ .normalized = null, .success = false, .error_code = 1 };
-    }
-
-    const components = parse_result.components.?;
-
-    // Add scheme (lowercase)
-    if (components.scheme) |scheme| {
-        for (scheme) |c| {
-            result.append(allocator, std.ascii.toLower(c)) catch {
-                return .{ .normalized = null, .success = false, .error_code = 2 };
-            };
-        }
-        result.append(allocator, ':') catch {
-            return .{ .normalized = null, .success = false, .error_code = 2 };
+    const parsed = uri_mod.parse(input) catch |err| {
+        return .{
+            .normalized = null,
+            .success = false,
+            .error_msg = parseErrorMessage(err),
         };
-    }
-
-    // Add authority
-    if (components.host != null) {
-        result.appendSlice(allocator, "//") catch {
-            return .{ .normalized = null, .success = false, .error_code = 2 };
-        };
-
-        if (components.userinfo) |userinfo| {
-            result.appendSlice(allocator, userinfo) catch {
-                return .{ .normalized = null, .success = false, .error_code = 2 };
-            };
-            result.append(allocator, '@') catch {
-                return .{ .normalized = null, .success = false, .error_code = 2 };
-            };
-        }
-
-        // Host lowercase (unless IPv6)
-        if (components.host) |host| {
-            if (host.len > 0 and host[0] == '[') {
-                result.appendSlice(allocator, host) catch {
-                    return .{ .normalized = null, .success = false, .error_code = 2 };
-                };
-            } else {
-                for (host) |c| {
-                    result.append(allocator, std.ascii.toLower(c)) catch {
-                        return .{ .normalized = null, .success = false, .error_code = 2 };
-                    };
-                }
-            }
-        }
-
-        if (components.port) |port| {
-            // Skip default ports
-            const is_default = if (components.scheme) |s|
-                (std.mem.eql(u8, s, "http") and port == 80) or
-                    (std.mem.eql(u8, s, "https") and port == 443)
-            else
-                false;
-
-            if (!is_default) {
-                result.append(allocator, ':') catch {
-                    return .{ .normalized = null, .success = false, .error_code = 2 };
-                };
-                var port_buf: [8]u8 = undefined;
-                const port_str = std.fmt.bufPrint(&port_buf, "{d}", .{port}) catch {
-                    return .{ .normalized = null, .success = false, .error_code = 2 };
-                };
-                result.appendSlice(allocator, port_str) catch {
-                    return .{ .normalized = null, .success = false, .error_code = 2 };
-                };
-            }
-        }
-    }
-
-    // Add path
-    result.appendSlice(allocator, components.path) catch {
-        return .{ .normalized = null, .success = false, .error_code = 2 };
     };
 
-    // Add query
-    if (components.query) |query| {
-        result.append(allocator, '?') catch {
-            return .{ .normalized = null, .success = false, .error_code = 2 };
+    var normalized = uri_mod.normalize(allocator, parsed) catch |err| {
+        return .{
+            .normalized = null,
+            .success = false,
+            .error_msg = switch (err) {
+                error.OutOfMemory => "Out of memory",
+                else => parseErrorMessage(err),
+            },
         };
-        result.appendSlice(allocator, query) catch {
-            return .{ .normalized = null, .success = false, .error_code = 2 };
-        };
-    }
+    };
+    defer normalized.deinit(allocator);
 
-    // Add fragment
-    if (components.fragment) |fragment| {
-        result.append(allocator, '#') catch {
-            return .{ .normalized = null, .success = false, .error_code = 2 };
-        };
-        result.appendSlice(allocator, fragment) catch {
-            return .{ .normalized = null, .success = false, .error_code = 2 };
-        };
-    }
+    // Serialize the normalized URI to a string
+    var buf = std.array_list.Managed(u8).init(allocator);
 
+    // Estimate output size from URI components to avoid reallocation
+    const estimated = (if (normalized.scheme) |s| s.len + 1 else @as(usize, 0)) +
+        (if (normalized.host != null) @as(usize, 2) else @as(usize, 0)) +
+        (if (normalized.userinfo) |ui| ui.len + 1 else @as(usize, 0)) +
+        (if (normalized.host) |h| h.len else @as(usize, 0)) +
+        (if (normalized.raw_port) |rp| rp.len + 1 else @as(usize, 0)) +
+        normalized.path.len +
+        (if (normalized.query) |q| q.len + 1 else @as(usize, 0)) +
+        (if (normalized.fragment) |f| f.len + 1 else @as(usize, 0));
+    buf.ensureTotalCapacity(estimated) catch {
+        buf.deinit();
+        return .{ .normalized = null, .success = false, .error_msg = "Out of memory" };
+    };
+
+    normalized.format(buf.writer()) catch {
+        buf.deinit();
+        return .{
+            .normalized = null,
+            .success = false,
+            .error_msg = "Out of memory",
+        };
+    };
+
+    const slice = buf.toOwnedSlice() catch {
+        buf.deinit();
+        return .{
+            .normalized = null,
+            .success = false,
+            .error_msg = "Out of memory",
+        };
+    };
     return .{
-        .normalized = result.toOwnedSlice(allocator) catch null,
+        .normalized = slice,
         .success = true,
-        .error_code = 0,
+        .error_msg = null,
     };
 }
 
@@ -686,6 +578,17 @@ test "parse uri - ipv6" {
     try std.testing.expectEqual(@as(?u16, 8080), c.port);
 }
 
+test "parse uri - error has descriptive message" {
+    const inputs = [_][]const u8{"http://example.com/%GG"};
+    var results: [1]ParseResult = undefined;
+
+    parseUris(&inputs, &results);
+
+    try std.testing.expect(!results[0].success);
+    try std.testing.expect(results[0].error_msg != null);
+    try std.testing.expectEqualStrings("Invalid percent encoding", results[0].error_msg.?);
+}
+
 test "validate uri - valid" {
     const inputs = [_][]const u8{
         "https://example.com",
@@ -708,7 +611,8 @@ test "validate uri - invalid percent encoding" {
     validateUris(&inputs, &results);
 
     try std.testing.expect(!results[0].valid);
-    try std.testing.expectEqual(@as(u8, 5), results[0].error_code);
+    try std.testing.expect(results[0].error_msg != null);
+    try std.testing.expectEqualStrings("Invalid percent encoding", results[0].error_msg.?);
 }
 
 test "normalize uri - lowercase" {
@@ -731,6 +635,7 @@ test "normalize uri - remove default port" {
     normalizeUris(allocator, &inputs, &results);
 
     try std.testing.expect(results[0].success);
+    // RFC 3986 Section 6.2.3: default port 80 is removed for http scheme
     try std.testing.expectEqualStrings("http://example.com/path", results[0].normalized.?);
     allocator.free(results[0].normalized.?);
 }

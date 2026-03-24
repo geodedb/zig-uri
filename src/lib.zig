@@ -3,8 +3,11 @@
 
 //! # URI - RFC 3986 Compliant URI/URL Parser for Zig
 //!
-//! A production-grade URI parsing and manipulation library strictly adhering to:
+//! A production-grade URI parsing and manipulation library implementing:
 //! - RFC 3986 (Uniform Resource Identifier - Generic Syntax)
+//! - RFC 8141 (Uniform Resource Names - URNs)
+//!
+//! ### Planned
 //! - RFC 3987 (Internationalized Resource Identifiers - IRIs)
 //! - RFC 6874 (IPv6 Zone Identifiers in URIs)
 //! - WHATWG URL Standard (for web compatibility)
@@ -12,10 +15,10 @@
 //! ## Features
 //!
 //! - **RFC-compliant**: Every component follows RFC 3986 grammar precisely
-//! - **Zero dependencies**: Only uses Zig standard library
+//! - **Minimal dependencies**: Core parsing uses only Zig standard library;
+//!   optional `spice` dependency for parallel batch operations
 //! - **Memory-safe**: No allocations for parsing, zero-copy slicing
 //! - **Cross-platform**: Works on all Zig-supported targets
-//! - **Unicode support**: IRI parsing with proper encoding/decoding
 //! - **URL normalization**: Case normalization, path simplification
 //!
 //! ## Quick Start
@@ -90,9 +93,10 @@
 //!
 //! The library supports different validation modes:
 //!
-//! - **Strict**: Full RFC 3986 compliance, rejects invalid URIs
-//! - **Lenient**: Accepts common deviations (unencoded spaces, etc.)
-//! - **WHATWG**: Web browser URL parsing semantics
+//! - **Strict** (`strict: true`, default): Full RFC 3986 compliance
+//! - **Relaxed** (`strict: false`): Accepts some invalid characters
+//! - **Spaces** (`allow_spaces: true`): Permits unencoded spaces
+//! - **IRI** (`iri_mode: true`): Accepts valid UTF-8 sequences per RFC 3987
 //!
 //! ## RFC Compliance Matrix
 //!
@@ -153,6 +157,9 @@ pub const Registry = registry.Registry;
 /// Registry capacity limits.
 pub const Caps = registry.Caps;
 
+/// Parse options for configurable URI validation modes.
+pub const ParseOptions = uri.ParseOptions;
+
 // =============================================================================
 // Primary API Functions
 // =============================================================================
@@ -199,8 +206,9 @@ pub const resolve = uri.resolve;
 ///
 /// Applies syntax-based normalization:
 /// - Case normalization (scheme and host to lowercase)
-/// - Percent-encoding normalization
+/// - Percent-encoding normalization (decode unreserved, uppercase hex digits)
 /// - Path segment normalization (remove dot segments)
+/// - Scheme-based normalization (remove default ports, ensure non-empty path with authority)
 pub const normalize = uri.normalize;
 
 // =============================================================================
@@ -263,7 +271,7 @@ pub const dump = debug.dump;
 
 pub const version = std.SemanticVersion{
     .major = 0,
-    .minor = 0,
+    .minor = 1,
     .patch = 0,
 };
 

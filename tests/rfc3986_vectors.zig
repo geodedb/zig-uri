@@ -334,8 +334,8 @@ test "RFC 3986 Section 5.4.1 - Normal examples" {
 
     for (test_cases) |tc| {
         const ref = try uri.parse(tc.reference);
-        const resolved = try uri.resolve(allocator, base, ref);
-        defer allocator.free(resolved.path);
+        var resolved = try uri.resolve(allocator, base, ref);
+        defer resolved.deinit(allocator);
         try std.testing.expectEqualStrings(tc.expected_path, resolved.path);
     }
 }
@@ -361,8 +361,8 @@ test "RFC 3986 Section 5.4.2 - Abnormal examples" {
 
     for (test_cases) |tc| {
         const ref = try uri.parse(tc.reference);
-        const resolved = try uri.resolve(allocator, base, ref);
-        defer allocator.free(resolved.path);
+        var resolved = try uri.resolve(allocator, base, ref);
+        defer resolved.deinit(allocator);
         try std.testing.expectEqualStrings(tc.expected_path, resolved.path);
     }
 }

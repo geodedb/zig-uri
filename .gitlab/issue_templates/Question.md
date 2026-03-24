@@ -8,12 +8,14 @@
 <!-- Describe what you've already attempted -->
 
 ## Code Example
+
 ```zig
 // Relevant code if applicable
 ```
 
 ## Environment
-- **Zig Version**: 
-- **Library Version/Commit**: 
+
+- **Zig Version**:
+- **Library Version/Commit**:
 
 /label ~question

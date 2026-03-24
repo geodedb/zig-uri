@@ -2,14 +2,16 @@
 <!-- A clear and concise description of the bug -->
 
 ## Environment
-- **Zig Version**: 
-- **OS**: 
-- **Library Version/Commit**: 
+
+- **Zig Version**:
+- **OS**:
+- **Library Version/Commit**:
 
 ## Steps to Reproduce
-1. 
-2. 
-3. 
+
+1.
+2.
+3.
 
 ## Expected Behavior
 <!-- What you expected to happen -->
@@ -18,11 +20,13 @@
 <!-- What actually happened -->
 
 ## Minimal Reproducible Example
+
 ```zig
 // Paste minimal code that reproduces the issue
 ```
 
 ## Error Output
+
 ```
 // Paste any error messages or stack traces
 ```
