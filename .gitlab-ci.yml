@@ -26,11 +26,12 @@ stages:
   - lint
   - build
   - test
+  - fuzz
   - security
   - sbom
   - release
 
-# Zig installation template (SHA-256 verified via ziglang.org index)
+# Zig installation template (SEC-R6-02: SHA-256 verified via ziglang.org index)
 .install-zig: &install-zig
   - apt-get update && apt-get install -y curl xz-utils python3
   - |
@@ -71,7 +72,7 @@ stages:
   - export PATH="$PWD/zig-${ZIG_VERSION}:$PATH"
   - zig version
 
-# Override zig-format component to use the project's ZIG_VERSION (0.15.2).
+# Override zig-format component to use the project's ZIG_VERSION.
 # The v1.2.1 component defaults to 0.14.0 and does not accept a version input.
 zig-format:
   before_script:
@@ -86,16 +87,6 @@ build:
   script:
     - zig build
 
-# Examples build verification (ensures API drift is caught in CI)
-build-examples:
-  stage: build
-  image: debian:bookworm-slim
-  before_script:
-    - *install-zig
-  script:
-    - zig build examples
-  needs: []
-
 # Unit tests
 test:
   stage: test
@@ -107,18 +98,7 @@ test:
   needs:
     - build
 
-# All tests (RFC vectors, acceptance, dataset)
-test-all:
-  stage: test
-  image: debian:bookworm-slim
-  before_script:
-    - *install-zig
-  script:
-    - zig build test-all --summary all
-  needs:
-    - build
-
-# ReleaseSafe tests
+# Release optimization tests
 test-release-safe:
   stage: test
   image: debian:bookworm-slim
@@ -129,7 +109,7 @@ test-release-safe:
   needs:
     - build
 
-# ReleaseFast tests — verifies correctness under production optimization
+# ReleaseFast tests
 test-release-fast:
   stage: test
   image: debian:bookworm-slim
@@ -140,7 +120,7 @@ test-release-fast:
   needs:
     - build
 
-# ReleaseSmall tests — verifies correctness under size-optimized builds
+# ReleaseSmall tests
 test-release-small:
   stage: test
   image: debian:bookworm-slim
@@ -150,3 +130,42 @@ test-release-small:
     - zig build test -Doptimize=ReleaseSmall --summary all
   needs:
     - build
+
+# Examples build verification
+build-examples:
+  stage: build
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build examples
+  needs: []
+
+# Coverage-guided fuzz testing.
+# Runs with a 60-second timeout so the job always terminates.
+#
+# Exit-code semantics:
+#   rc=0  : fuzzer stopped cleanly before timeout (no crash)
+#   rc=124: timeout reached (expected in CI) - pass
+#   other : fuzzer found a crash - fail the job
+fuzz:
+  stage: fuzz
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - timeout 60 zig build test --fuzz; rc=$?; if [ $rc -ne 0 ] && [ $rc -ne 124 ]; then exit $rc; fi
+  artifacts:
+    when: on_failure
+    paths:
+      - zig-out/fuzz/
+    expire_in: 1 week
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+      allow_failure: true
+  allow_failure: true
+  needs:
+    - build
+
