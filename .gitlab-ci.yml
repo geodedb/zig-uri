@@ -1,40 +1,152 @@
-# GitLab CI/CD Configuration
+---
+# GitLab CI/CD Pipeline for uri
 # SPDX-License-Identifier: Apache-2.0
-# Copyright (c) 2024-2025 CodePros
-#
-# NOTE: Build/test stages pending CI runner provisioning with Zig toolchain. See issue #22.
-# Security scanning is enabled.
 
 include:
-  # Security scanning (Advanced SAST enabled by default)
+  # Security scanning
   - component: gitlab.com/devnw/ci-catalog/security-sast@v1.7.1
-    inputs:
-      stage: security
   - component: gitlab.com/devnw/ci-catalog/security-dependency-scanning@v1.7.1
-    inputs:
-      stage: security
   - component: gitlab.com/devnw/ci-catalog/security-secrets@v1.7.1
-    inputs:
-      stage: security
   - component: gitlab.com/devnw/ci-catalog/security-gitleaks@v1.7.1
 
-  # SBOM generation and scanning
+  # Code quality
+  - component: gitlab.com/devnw/ci-catalog/zig-format@v1.2.1
+
+  # SBOM
   - component: gitlab.com/devnw/ci-catalog/sbom-generate@v1.7.1
   - component: gitlab.com/devnw/ci-catalog/sbom-scan@v1.7.1
-    inputs:
-      allow_failure: true
 
-  # Release creation
+  # Release
   - component: gitlab.com/devnw/ci-catalog/release-semantic@v1.7.1
-    inputs:
-      stage: release
 
-default:
-  tags:
-    - company
-    - linux
+variables:
+  ZIG_VERSION: "0.15.2"
 
 stages:
+  - lint
+  - build
+  - test
   - security
   - sbom
   - release
+
+# Zig installation template (SHA-256 verified via ziglang.org index)
+.install-zig: &install-zig
+  - apt-get update && apt-get install -y curl xz-utils python3
+  - |
+    if [ ! -f "zig-${ZIG_VERSION}/zig" ]; then
+      ARCH=$(uname -m)
+      case "$ARCH" in
+        x86_64)  ZIG_ARCH="x86_64" ;;
+        aarch64) ZIG_ARCH="aarch64" ;;
+        arm64)   ZIG_ARCH="aarch64" ;;
+        *)       echo "Unsupported architecture: $ARCH"; exit 1 ;;
+      esac
+      MAJOR=$(echo "$ZIG_VERSION" | cut -d. -f1)
+      MINOR=$(echo "$ZIG_VERSION" | cut -d. -f2)
+      if [ "$MAJOR" -eq 0 ] && [ "$MINOR" -lt 15 ]; then
+        ARCHIVE_NAME="zig-linux-${ZIG_ARCH}-${ZIG_VERSION}"
+      else
+        ARCHIVE_NAME="zig-${ZIG_ARCH}-linux-${ZIG_VERSION}"
+      fi
+      TARBALL="${ARCHIVE_NAME}.tar.xz"
+      INDEX_FILE=$(mktemp)
+      curl -fsSL "https://ziglang.org/download/index.json" -o "${INDEX_FILE}"
+      EXPECTED_HASH=$(ZIG_VER="${ZIG_VERSION}" ZIG_ARCH_KEY="${ZIG_ARCH}-linux" ZIG_IDX="${INDEX_FILE}" \
+        python3 -c "
+    import json, os, sys
+    idx = json.load(open(os.environ['ZIG_IDX']))
+    pkg = idx.get(os.environ['ZIG_VER'], {}).get(os.environ['ZIG_ARCH_KEY'], {})
+    h = pkg.get('shasum', '')
+    if not h: sys.exit('SHA-256 not found for ' + os.environ['ZIG_VER'] + '/' + os.environ['ZIG_ARCH_KEY'])
+    print(h)
+    ")
+      rm -f "${INDEX_FILE}"
+      curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/${TARBALL}" -o "${TARBALL}"
+      echo "${EXPECTED_HASH}  ${TARBALL}" | sha256sum --check --strict
+      tar -xJf "${TARBALL}"
+      mv "${ARCHIVE_NAME}" "zig-${ZIG_VERSION}"
+      rm -f "${TARBALL}"
+    fi
+  - export PATH="$PWD/zig-${ZIG_VERSION}:$PATH"
+  - zig version
+
+# Override zig-format component to use the project's ZIG_VERSION (0.15.2).
+# The v1.2.1 component defaults to 0.14.0 and does not accept a version input.
+zig-format:
+  before_script:
+    - *install-zig
+
+# Build job
+build:
+  stage: build
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build
+
+# Examples build verification (ensures API drift is caught in CI)
+build-examples:
+  stage: build
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build examples
+  needs: []
+
+# Unit tests
+test:
+  stage: test
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build test --summary all
+  needs:
+    - build
+
+# All tests (RFC vectors, acceptance, dataset)
+test-all:
+  stage: test
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build test-all --summary all
+  needs:
+    - build
+
+# ReleaseSafe tests
+test-release-safe:
+  stage: test
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build test -Doptimize=ReleaseSafe --summary all
+  needs:
+    - build
+
+# ReleaseFast tests — verifies correctness under production optimization
+test-release-fast:
+  stage: test
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build test -Doptimize=ReleaseFast --summary all
+  needs:
+    - build
+
+# ReleaseSmall tests — verifies correctness under size-optimized builds
+test-release-small:
+  stage: test
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build test -Doptimize=ReleaseSmall --summary all
+  needs:
+    - build
