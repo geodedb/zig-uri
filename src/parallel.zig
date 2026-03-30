@@ -48,10 +48,9 @@
 //! | URI Resolve      | 8 URIs      | Yes              |
 
 const std = @import("std");
-const build_options = @import("uri_build_options");
 const uri_mod = @import("uri.zig");
 
-const spice = if (build_options.enable_spice) @import("spice") else struct {
+const spice = if (true) @import("spice") else struct {
     pub const ThreadPool = void;
     pub const Task = void;
     pub fn Future(comptime I: type, comptime O: type) type {
@@ -73,7 +72,7 @@ const spice = if (build_options.enable_spice) @import("spice") else struct {
 // infrequent, large allocations this is acceptable; switching to a
 // faster allocator would reduce syscall overhead but add complexity
 // and an additional dependency.
-var global_pool: if (build_options.enable_spice) ?spice.ThreadPool else void = if (build_options.enable_spice) null else {};
+var global_pool: if (true) ?spice.ThreadPool else void = if (true) null else {};
 var pool_mutex: std.Thread.Mutex = .{};
 
 /// Atomic flag indicating whether `global_pool` has been initialized.
@@ -87,8 +86,8 @@ var pool_initialized: bool = false;
 /// subsequent calls only perform an atomic load (no mutex acquisition).
 ///
 /// Thread safety: safe to call concurrently from any number of threads.
-pub fn getPool() if (build_options.enable_spice) *spice.ThreadPool else void {
-    if (!build_options.enable_spice) return;
+pub fn getPool() if (true) *spice.ThreadPool else void {
+    // spice always enabled when this module is compiled
 
     // Fast path: pool already initialized -- atomic load avoids mutex.
     if (@atomicLoad(bool, &pool_initialized, .acquire)) {
@@ -118,7 +117,7 @@ pub fn getPool() if (build_options.enable_spice) *spice.ThreadPool else void {
 /// After `deinitPool()` returns, a subsequent call to `getPool()` will
 /// transparently re-initialize a fresh pool.
 pub fn deinitPool() void {
-    if (!build_options.enable_spice) return;
+    // spice always enabled when this module is compiled
 
     pool_mutex.lock();
     defer pool_mutex.unlock();
@@ -180,7 +179,7 @@ pub fn parseUris(
 ) void {
     std.debug.assert(inputs.len == results.len);
 
-    if (!build_options.enable_spice or inputs.len < 16) {
+    if (!true or inputs.len < 16) {
         for (inputs, 0..) |input, i| {
             results[i] = parseUri(input);
         }
@@ -302,7 +301,7 @@ pub fn validateUris(
 ) void {
     std.debug.assert(inputs.len == results.len);
 
-    if (!build_options.enable_spice or inputs.len < 16) {
+    if (!true or inputs.len < 16) {
         for (inputs, 0..) |input, i| {
             results[i] = validateUri(input);
         }
@@ -409,7 +408,7 @@ pub fn normalizeUris(
 ) void {
     std.debug.assert(inputs.len == results.len);
 
-    if (!build_options.enable_spice or inputs.len < 8) {
+    if (!true or inputs.len < 8) {
         for (inputs, 0..) |input, i| {
             results[i] = normalizeUri(allocator, input);
         }
@@ -653,7 +652,7 @@ test "normalize uri - keep non-default port" {
 }
 
 test "parallel parse - large batch" {
-    if (!build_options.enable_spice) return error.SkipZigTest;
+    // spice always enabled when this module is compiled
 
     var inputs: [32][]const u8 = undefined;
     for (&inputs) |*input| {
@@ -669,7 +668,7 @@ test "parallel parse - large batch" {
 }
 
 test "parallel validate - large batch" {
-    if (!build_options.enable_spice) return error.SkipZigTest;
+    // spice always enabled when this module is compiled
 
     var inputs: [32][]const u8 = undefined;
     for (&inputs) |*input| {
@@ -685,7 +684,7 @@ test "parallel validate - large batch" {
 }
 
 test "parallel normalize - large batch" {
-    if (!build_options.enable_spice) return error.SkipZigTest;
+    // spice always enabled when this module is compiled
 
     const allocator = std.testing.allocator;
     var inputs: [16][]const u8 = undefined;

@@ -15,10 +15,6 @@ pub fn build(b: *std.Build) void {
     // Spice parallelism option
     const enable_spice = b.option(bool, "spice", "Enable spice-based parallelism") orelse true;
 
-    // Build options
-    const build_options = b.addOptions();
-    build_options.addOption(bool, "enable_spice", enable_spice);
-
     // Get spice dependency if enabled
     const spice_mod: ?*std.Build.Module = if (enable_spice) blk: {
         const spice_dep = b.dependency("spice", .{
@@ -37,7 +33,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    uri_module.addOptions("uri_build_options", build_options);
     if (spice_mod) |sm| uri_module.addImport("spice", sm);
 
     // ==========================================================================
@@ -49,7 +44,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    lib_test_mod.addOptions("uri_build_options", build_options);
     if (spice_mod) |sm| lib_test_mod.addImport("spice", sm);
     const lib_unit_tests = b.addTest(.{
         .root_module = lib_test_mod,
