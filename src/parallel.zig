@@ -48,7 +48,7 @@
 //! | URI Resolve      | 8 URIs      | Yes              |
 
 const std = @import("std");
-const build_options = @import("build_options");
+const build_options = @import("uri_build_options");
 const uri_mod = @import("uri.zig");
 
 const spice = if (build_options.enable_spice) @import("spice") else struct {

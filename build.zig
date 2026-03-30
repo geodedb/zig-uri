@@ -37,7 +37,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    uri_module.addOptions("build_options", build_options);
+    uri_module.addOptions("uri_build_options", build_options);
     if (spice_mod) |sm| uri_module.addImport("spice", sm);
 
     // ==========================================================================
@@ -49,7 +49,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    lib_test_mod.addOptions("build_options", build_options);
+    lib_test_mod.addOptions("uri_build_options", build_options);
     if (spice_mod) |sm| lib_test_mod.addImport("spice", sm);
     const lib_unit_tests = b.addTest(.{
         .root_module = lib_test_mod,
