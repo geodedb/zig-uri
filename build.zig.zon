@@ -16,11 +16,11 @@
     // Dependencies
     .dependencies = .{
         // Spice heartbeat scheduling for parallel operations
-        // Pinned to commit fba9feb430c1aa5a06a429d8de6a0a5088bc045d on main.
+        // Pinned to commit 79a291ee55789160f9aa4af2ddf526fa38e15dc2 on main.
         // TODO: Update to a tagged release when upstream publishes one.
         .spice = .{
-            .url = "git+https://gitlab.com/devnw/zig/spice.git#fba9feb430c1aa5a06a429d8de6a0a5088bc045d",
-            .hash = "spice-0.0.0-HnDb5yvKAACnUB06Kk61JFVAf5ik_Frkf7aSKDGQD3R0",
+            .url = "git+https://gitlab.com/devnw/zig/spice.git#79a291ee55789160f9aa4af2ddf526fa38e15dc2",
+            .hash = "spice-0.0.0-HnDb5-nKAABohkh8SemVSOtpb7nZestAanVGqrY2fuvC",
         },
     },
 
