@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2025 CodePros
 
-//! Parallel URI operations using spice heartbeat scheduling.
+//! Parallel URI operations using thread-pool flat task submission.
 //!
 //! Provides high-performance parallel implementations for batch URI
 //! parsing, validation, normalization, and resolution.
@@ -9,14 +9,14 @@
 //! ## Overview
 //!
 //! This module enables parallel processing of URI operations
-//! using the spice thread pool with fork/join work-stealing. Operations
-//! automatically fall back to sequential processing when spice is disabled
-//! or input sizes are below thresholds.
+//! using the thread-pool library with submitBatch/WaitGroup. Operations
+//! automatically fall back to sequential processing when thread-pool is
+//! disabled or input sizes are below thresholds.
 //!
 //! ## Build Configuration
 //!
-//! Enable parallel processing with `-Dspice=true` (default: enabled).
-//! Disable with `-Dspice=false` for sequential-only execution.
+//! Enable parallel processing with `-Dthread-pool=true` (default: enabled).
+//! Disable with `-Dthread-pool=false` for sequential-only execution.
 //!
 //! ## Usage Example
 //!
@@ -49,16 +49,7 @@
 
 const std = @import("std");
 const uri_mod = @import("uri.zig");
-
-const spice = if (true) @import("spice") else struct {
-    pub const ThreadPool = void;
-    pub const Task = void;
-    pub fn Future(comptime I: type, comptime O: type) type {
-        _ = I;
-        _ = O;
-        return void;
-    }
-};
+const tp = @import("thread_pool");
 
 // ============================================================================
 // Global Thread Pool
@@ -72,7 +63,7 @@ const spice = if (true) @import("spice") else struct {
 // infrequent, large allocations this is acceptable; switching to a
 // faster allocator would reduce syscall overhead but add complexity
 // and an additional dependency.
-var global_pool: if (true) ?spice.ThreadPool else void = if (true) null else {};
+var global_pool: ?tp.ThreadPool = null;
 var pool_mutex: std.Thread.Mutex = .{};
 
 /// Atomic flag indicating whether `global_pool` has been initialized.
@@ -86,9 +77,7 @@ var pool_initialized: bool = false;
 /// subsequent calls only perform an atomic load (no mutex acquisition).
 ///
 /// Thread safety: safe to call concurrently from any number of threads.
-pub fn getPool() if (true) *spice.ThreadPool else void {
-    // spice always enabled when this module is compiled
-
+pub fn getPool() *tp.ThreadPool {
     // Fast path: pool already initialized -- atomic load avoids mutex.
     if (@atomicLoad(bool, &pool_initialized, .acquire)) {
         return &global_pool.?;
@@ -99,8 +88,8 @@ pub fn getPool() if (true) *spice.ThreadPool else void {
     defer pool_mutex.unlock();
 
     if (global_pool == null) {
-        global_pool = spice.ThreadPool.init(std.heap.page_allocator);
-        global_pool.?.start(.{});
+        global_pool = tp.ThreadPool.init(std.heap.page_allocator, .{}) catch
+            @panic("thread-pool: init failed");
         @atomicStore(bool, &pool_initialized, true, .release);
     }
     return &global_pool.?;
@@ -117,8 +106,6 @@ pub fn getPool() if (true) *spice.ThreadPool else void {
 /// After `deinitPool()` returns, a subsequent call to `getPool()` will
 /// transparently re-initialize a fresh pool.
 pub fn deinitPool() void {
-    // spice always enabled when this module is compiled
-
     pool_mutex.lock();
     defer pool_mutex.unlock();
 
@@ -154,15 +141,23 @@ pub const ParseResult = struct {
     error_msg: ?[]const u8,
 };
 
-/// Context for parallel parsing
-const ParseContext = struct {
+// ============================================================================
+// Parallel URI Parsing
+// ============================================================================
+
+const MAX_CHUNKS = 64;
+
+const ParseChunk = struct {
     inputs: []const []const u8,
     results: []ParseResult,
 };
 
-// ============================================================================
-// Parallel URI Parsing
-// ============================================================================
+fn parseChunkTask(ctx_ptr: *anyopaque, _: *tp.TaskContext) void {
+    const chunk: *ParseChunk = @ptrCast(@alignCast(ctx_ptr));
+    for (chunk.inputs, 0..) |input, i| {
+        chunk.results[i] = parseUri(input);
+    }
+}
 
 /// Parse multiple URI strings in parallel.
 ///
@@ -179,7 +174,7 @@ pub fn parseUris(
 ) void {
     std.debug.assert(inputs.len == results.len);
 
-    if (!true or inputs.len < 16) {
+    if (inputs.len < 16) {
         for (inputs, 0..) |input, i| {
             results[i] = parseUri(input);
         }
@@ -187,41 +182,25 @@ pub fn parseUris(
     }
 
     const pool = getPool();
-    const ctx = ParseContext{
-        .inputs = inputs,
-        .results = results,
-    };
-    _ = pool.call(void, parseTask, ctx);
-}
+    const chunk_size = @max(8, inputs.len / MAX_CHUNKS);
+    var chunks: [MAX_CHUNKS]ParseChunk = undefined;
+    var batch: [MAX_CHUNKS]tp.BatchTask = undefined;
+    var n: usize = 0;
+    var i: usize = 0;
+    while (i < inputs.len and n < MAX_CHUNKS) {
+        const end = @min(i + chunk_size, inputs.len);
+        chunks[n] = .{ .inputs = inputs[i..end], .results = results[i..end] };
+        batch[n] = .{ .task_fn = &parseChunkTask, .ctx = @ptrCast(&chunks[n]) };
+        n += 1;
+        i = end;
+    }
 
-fn parseTask(t: *spice.Task, ctx: ParseContext) void {
-    const inputs = ctx.inputs;
-    const results = ctx.results;
-
-    if (inputs.len < 8) {
-        for (inputs, 0..) |input, i| {
-            results[i] = parseUri(input);
-        }
+    var wg = pool.waitGroup();
+    _ = pool.submitBatch(batch[0..n], .{ .wait_group = &wg }) catch {
+        for (inputs, 0..) |input, j| results[j] = parseUri(input);
         return;
-    }
-
-    const mid = inputs.len / 2;
-    const left_ctx = ParseContext{
-        .inputs = inputs[0..mid],
-        .results = results[0..mid],
     };
-    const right_ctx = ParseContext{
-        .inputs = inputs[mid..],
-        .results = results[mid..],
-    };
-
-    var fut = spice.Future(ParseContext, void).init();
-    fut.fork(t, parseTask, right_ctx);
-
-    t.call(void, parseTask, left_ctx);
-    if (fut.join(t) == null) {
-        t.call(void, parseTask, right_ctx);
-    }
+    wg.wait();
 }
 
 /// Parse a single URI by delegating to the core uri.zig parser.
@@ -276,15 +255,21 @@ pub const ValidateResult = struct {
     error_msg: ?[]const u8,
 };
 
-/// Context for parallel validation
-const ValidateContext = struct {
+// ============================================================================
+// Parallel URI Validation
+// ============================================================================
+
+const ValidateChunk = struct {
     inputs: []const []const u8,
     results: []ValidateResult,
 };
 
-// ============================================================================
-// Parallel URI Validation
-// ============================================================================
+fn validateChunkTask(ctx_ptr: *anyopaque, _: *tp.TaskContext) void {
+    const chunk: *ValidateChunk = @ptrCast(@alignCast(ctx_ptr));
+    for (chunk.inputs, 0..) |input, i| {
+        chunk.results[i] = validateUri(input);
+    }
+}
 
 /// Validate multiple URI strings in parallel.
 ///
@@ -301,7 +286,7 @@ pub fn validateUris(
 ) void {
     std.debug.assert(inputs.len == results.len);
 
-    if (!true or inputs.len < 16) {
+    if (inputs.len < 16) {
         for (inputs, 0..) |input, i| {
             results[i] = validateUri(input);
         }
@@ -309,41 +294,25 @@ pub fn validateUris(
     }
 
     const pool = getPool();
-    const ctx = ValidateContext{
-        .inputs = inputs,
-        .results = results,
-    };
-    _ = pool.call(void, validateTask, ctx);
-}
+    const chunk_size = @max(8, inputs.len / MAX_CHUNKS);
+    var chunks: [MAX_CHUNKS]ValidateChunk = undefined;
+    var batch: [MAX_CHUNKS]tp.BatchTask = undefined;
+    var n: usize = 0;
+    var i: usize = 0;
+    while (i < inputs.len and n < MAX_CHUNKS) {
+        const end = @min(i + chunk_size, inputs.len);
+        chunks[n] = .{ .inputs = inputs[i..end], .results = results[i..end] };
+        batch[n] = .{ .task_fn = &validateChunkTask, .ctx = @ptrCast(&chunks[n]) };
+        n += 1;
+        i = end;
+    }
 
-fn validateTask(t: *spice.Task, ctx: ValidateContext) void {
-    const inputs = ctx.inputs;
-    const results = ctx.results;
-
-    if (inputs.len < 8) {
-        for (inputs, 0..) |input, i| {
-            results[i] = validateUri(input);
-        }
+    var wg = pool.waitGroup();
+    _ = pool.submitBatch(batch[0..n], .{ .wait_group = &wg }) catch {
+        for (inputs, 0..) |input, j| results[j] = validateUri(input);
         return;
-    }
-
-    const mid = inputs.len / 2;
-    const left_ctx = ValidateContext{
-        .inputs = inputs[0..mid],
-        .results = results[0..mid],
     };
-    const right_ctx = ValidateContext{
-        .inputs = inputs[mid..],
-        .results = results[mid..],
-    };
-
-    var fut = spice.Future(ValidateContext, void).init();
-    fut.fork(t, validateTask, right_ctx);
-
-    t.call(void, validateTask, left_ctx);
-    if (fut.join(t) == null) {
-        t.call(void, validateTask, right_ctx);
-    }
+    wg.wait();
 }
 
 /// Validate a single URI by delegating to the core uri.zig parser.
@@ -372,16 +341,22 @@ pub const NormalizeResult = struct {
     error_msg: ?[]const u8,
 };
 
-/// Context for parallel normalization
-const NormalizeContext = struct {
+// ============================================================================
+// Parallel URI Normalization
+// ============================================================================
+
+const NormalizeChunk = struct {
     allocator: std.mem.Allocator,
     inputs: []const []const u8,
     results: []NormalizeResult,
 };
 
-// ============================================================================
-// Parallel URI Normalization
-// ============================================================================
+fn normalizeChunkTask(ctx_ptr: *anyopaque, _: *tp.TaskContext) void {
+    const chunk: *NormalizeChunk = @ptrCast(@alignCast(ctx_ptr));
+    for (chunk.inputs, 0..) |input, i| {
+        chunk.results[i] = normalizeUri(chunk.allocator, input);
+    }
+}
 
 /// Normalize multiple URIs in parallel.
 ///
@@ -390,7 +365,7 @@ const NormalizeContext = struct {
 ///
 /// Parameters:
 /// - allocator: Memory allocator for normalized strings.
-///   **Thread-safety requirement:** When spice is enabled and the input
+///   **Thread-safety requirement:** When thread-pool is enabled and the input
 ///   length meets the parallel threshold (>= 8), this allocator is used
 ///   concurrently from multiple worker threads. It **must** be thread-safe.
 ///   Suitable allocators include `std.heap.page_allocator` and
@@ -408,7 +383,7 @@ pub fn normalizeUris(
 ) void {
     std.debug.assert(inputs.len == results.len);
 
-    if (!true or inputs.len < 8) {
+    if (inputs.len < 8) {
         for (inputs, 0..) |input, i| {
             results[i] = normalizeUri(allocator, input);
         }
@@ -416,44 +391,29 @@ pub fn normalizeUris(
     }
 
     const pool = getPool();
-    const ctx = NormalizeContext{
-        .allocator = allocator,
-        .inputs = inputs,
-        .results = results,
-    };
-    _ = pool.call(void, normalizeTask, ctx);
-}
+    const chunk_size = @max(4, inputs.len / MAX_CHUNKS);
+    var chunks: [MAX_CHUNKS]NormalizeChunk = undefined;
+    var batch: [MAX_CHUNKS]tp.BatchTask = undefined;
+    var n: usize = 0;
+    var i: usize = 0;
+    while (i < inputs.len and n < MAX_CHUNKS) {
+        const end = @min(i + chunk_size, inputs.len);
+        chunks[n] = .{
+            .allocator = allocator,
+            .inputs = inputs[i..end],
+            .results = results[i..end],
+        };
+        batch[n] = .{ .task_fn = &normalizeChunkTask, .ctx = @ptrCast(&chunks[n]) };
+        n += 1;
+        i = end;
+    }
 
-fn normalizeTask(t: *spice.Task, ctx: NormalizeContext) void {
-    const inputs = ctx.inputs;
-    const results = ctx.results;
-
-    if (inputs.len < 4) {
-        for (inputs, 0..) |input, i| {
-            results[i] = normalizeUri(ctx.allocator, input);
-        }
+    var wg = pool.waitGroup();
+    _ = pool.submitBatch(batch[0..n], .{ .wait_group = &wg }) catch {
+        for (inputs, 0..) |input, j| results[j] = normalizeUri(allocator, input);
         return;
-    }
-
-    const mid = inputs.len / 2;
-    const left_ctx = NormalizeContext{
-        .allocator = ctx.allocator,
-        .inputs = inputs[0..mid],
-        .results = results[0..mid],
     };
-    const right_ctx = NormalizeContext{
-        .allocator = ctx.allocator,
-        .inputs = inputs[mid..],
-        .results = results[mid..],
-    };
-
-    var fut = spice.Future(NormalizeContext, void).init();
-    fut.fork(t, normalizeTask, right_ctx);
-
-    t.call(void, normalizeTask, left_ctx);
-    if (fut.join(t) == null) {
-        t.call(void, normalizeTask, right_ctx);
-    }
+    wg.wait();
 }
 
 /// Normalize a single URI by delegating to the core uri.zig parser and normalizer.
@@ -652,8 +612,6 @@ test "normalize uri - keep non-default port" {
 }
 
 test "parallel parse - large batch" {
-    // spice always enabled when this module is compiled
-
     var inputs: [32][]const u8 = undefined;
     for (&inputs) |*input| {
         input.* = "https://example.com/path";
@@ -668,8 +626,6 @@ test "parallel parse - large batch" {
 }
 
 test "parallel validate - large batch" {
-    // spice always enabled when this module is compiled
-
     var inputs: [32][]const u8 = undefined;
     for (&inputs) |*input| {
         input.* = "https://example.com/path?query=value";
@@ -684,8 +640,6 @@ test "parallel validate - large batch" {
 }
 
 test "parallel normalize - large batch" {
-    // spice always enabled when this module is compiled
-
     const allocator = std.testing.allocator;
     var inputs: [16][]const u8 = undefined;
     for (&inputs) |*input| {

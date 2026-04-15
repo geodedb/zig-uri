@@ -16,7 +16,7 @@
 //!
 //! - **RFC-compliant**: Every component follows RFC 3986 grammar precisely
 //! - **Minimal dependencies**: Core parsing uses only Zig standard library;
-//!   optional `spice` dependency for parallel batch operations
+//!   optional `thread-pool` dependency for parallel batch operations
 //! - **Memory-safe**: No allocations for parsing, zero-copy slicing
 //! - **Cross-platform**: Works on all Zig-supported targets
 //! - **URL normalization**: Case normalization, path simplification

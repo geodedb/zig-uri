@@ -12,16 +12,16 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Spice parallelism option
-    const enable_spice = b.option(bool, "spice", "Enable spice-based parallelism") orelse true;
+    // thread-pool parallelism option
+    const enable_tp = b.option(bool, "thread-pool", "Enable thread-pool-based parallelism") orelse true;
 
-    // Get spice dependency if enabled
-    const spice_mod: ?*std.Build.Module = if (enable_spice) blk: {
-        const spice_dep = b.dependency("spice", .{
+    // Get thread-pool dependency if enabled
+    const tp_mod: ?*std.Build.Module = if (enable_tp) blk: {
+        const tp_dep = b.dependency("thread_pool", .{
             .target = target,
             .optimize = optimize,
         });
-        break :blk spice_dep.module("spice");
+        break :blk tp_dep.module("thread_pool");
     } else null;
 
     // ==========================================================================
@@ -33,7 +33,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    if (spice_mod) |sm| uri_module.addImport("spice", sm);
+    if (tp_mod) |tm| uri_module.addImport("thread_pool", tm);
 
     // ==========================================================================
     // Unit Tests
@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    if (spice_mod) |sm| lib_test_mod.addImport("spice", sm);
+    if (tp_mod) |tm| lib_test_mod.addImport("thread_pool", tm);
     const lib_unit_tests = b.addTest(.{
         .root_module = lib_test_mod,
     });
