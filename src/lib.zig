@@ -283,3 +283,35 @@ test {
     // Run tests for all submodules
     std.testing.refAllDecls(@This());
 }
+
+test "parallel re-export is reachable" {
+    // Smoke test: verify parallel.zig is reachable through the public
+    // uri root module and the batch parse entry point works end-to-end.
+    // Use >= 16 inputs so the parallel path (not sequential fallback) is
+    // exercised, confirming the thread-pool wiring is live.
+    const inputs = [_][]const u8{
+        "https://example.com/a",
+        "https://example.com/b",
+        "https://example.com/c",
+        "https://example.com/d",
+        "http://localhost:8080/",
+        "urn:isbn:0451450523",
+        "ftp://ftp.example.com/file",
+        "mailto:user@example.com",
+        "https://example.com/e",
+        "https://example.com/f",
+        "https://example.com/g",
+        "https://example.com/h",
+        "https://example.com/i",
+        "https://example.com/j",
+        "https://example.com/k",
+        "https://example.com/l",
+    };
+    var results: [16]parallel.ParseResult = undefined;
+    parallel.parseUris(&inputs, &results);
+    defer parallel.deinitPool();
+
+    for (results) |r| {
+        try std.testing.expect(r.success);
+    }
+}
