@@ -64,7 +64,7 @@ const tp = @import("thread_pool");
 // faster allocator would reduce syscall overhead but add complexity
 // and an additional dependency.
 var global_pool: ?tp.ThreadPool = null;
-var pool_mutex: std.Thread.Mutex = .{};
+var pool_mutex: tp.sync.Mutex = .{};
 
 /// Atomic flag indicating whether `global_pool` has been initialized.
 /// Used as a fast-path check to avoid acquiring `pool_mutex` on every
@@ -439,7 +439,7 @@ fn normalizeUri(allocator: std.mem.Allocator, input: []const u8) NormalizeResult
     defer normalized.deinit(allocator);
 
     // Serialize the normalized URI to a string
-    var buf = std.array_list.Managed(u8).init(allocator);
+    var aw = std.Io.Writer.Allocating.init(allocator);
 
     // Estimate output size from URI components to avoid reallocation
     const estimated = (if (normalized.scheme) |s| s.len + 1 else @as(usize, 0)) +
@@ -450,13 +450,13 @@ fn normalizeUri(allocator: std.mem.Allocator, input: []const u8) NormalizeResult
         normalized.path.len +
         (if (normalized.query) |q| q.len + 1 else @as(usize, 0)) +
         (if (normalized.fragment) |f| f.len + 1 else @as(usize, 0));
-    buf.ensureTotalCapacity(estimated) catch {
-        buf.deinit();
+    aw.ensureTotalCapacity(estimated) catch {
+        aw.deinit();
         return .{ .normalized = null, .success = false, .error_msg = "Out of memory" };
     };
 
-    normalized.format(buf.writer()) catch {
-        buf.deinit();
+    normalized.format(&aw.writer) catch {
+        aw.deinit();
         return .{
             .normalized = null,
             .success = false,
@@ -464,8 +464,9 @@ fn normalizeUri(allocator: std.mem.Allocator, input: []const u8) NormalizeResult
         };
     };
 
-    const slice = buf.toOwnedSlice() catch {
-        buf.deinit();
+    var al = aw.toArrayList();
+    const slice = al.toOwnedSlice(allocator) catch {
+        al.deinit(allocator);
         return .{
             .normalized = null,
             .success = false,

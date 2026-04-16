@@ -169,7 +169,7 @@ pub const Registry = struct {
             .content = content_copy,
             .anchors = std.StringHashMap(Anchor).init(self.allocator),
             .content_type = ct_copy,
-            .timestamp = std.time.timestamp(),
+            .timestamp = 0,
         };
 
         self.resources.put(uri_copy, resource) catch return RegistryError.OutOfMemory;

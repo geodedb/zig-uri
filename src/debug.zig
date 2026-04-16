@@ -156,32 +156,34 @@ fn writeFieldIntDispatch(writer: anytype, first: *bool, key: []const u8, value: 
 ///
 /// Userinfo passwords are automatically redacted.
 pub fn toJson(allocator: Allocator, uri: Uri) Allocator.Error![]u8 {
-    var buf = std.array_list.Managed(u8).init(allocator);
-    errdefer buf.deinit();
+    var aw = std.Io.Writer.Allocating.init(allocator);
+    errdefer aw.deinit();
 
-    const writer = buf.writer();
+    const writer = &aw.writer;
 
-    try writer.writeAll("{");
-    try writeUriFields(writer, uri, .compact);
-    try writer.writeAll("}");
+    writer.writeAll("{") catch return error.OutOfMemory;
+    writeUriFields(writer, uri, .compact) catch return error.OutOfMemory;
+    writer.writeAll("}") catch return error.OutOfMemory;
 
-    return buf.toOwnedSlice();
+    var al = aw.toArrayList();
+    return al.toOwnedSlice(allocator);
 }
 
 /// Generate a formatted multi-line JSON representation.
 ///
 /// Userinfo passwords are automatically redacted.
 pub fn toJsonPretty(allocator: Allocator, uri: Uri) Allocator.Error![]u8 {
-    var buf = std.array_list.Managed(u8).init(allocator);
-    errdefer buf.deinit();
+    var aw = std.Io.Writer.Allocating.init(allocator);
+    errdefer aw.deinit();
 
-    const writer = buf.writer();
+    const writer = &aw.writer;
 
-    try writer.writeAll("{\n");
-    try writeUriFields(writer, uri, .pretty);
-    try writer.writeAll("\n}");
+    writer.writeAll("{\n") catch return error.OutOfMemory;
+    writeUriFields(writer, uri, .pretty) catch return error.OutOfMemory;
+    writer.writeAll("\n}") catch return error.OutOfMemory;
 
-    return buf.toOwnedSlice();
+    var al = aw.toArrayList();
+    return al.toOwnedSlice(allocator);
 }
 
 fn writeField(writer: anytype, first: *bool, key: []const u8, value: []const u8) !void {
@@ -202,7 +204,7 @@ fn writeFieldInt(writer: anytype, first: *bool, key: []const u8, value: u16) !vo
     try writer.writeByte('"');
     try writer.writeAll(key);
     try writer.writeAll("\":");
-    try std.fmt.format(writer, "{d}", .{value});
+    try writer.print("{d}", .{value});
 }
 
 fn writeEscapedString(writer: anytype, s: []const u8) !void {
@@ -215,7 +217,7 @@ fn writeEscapedString(writer: anytype, s: []const u8) !void {
             '\t' => try writer.writeAll("\\t"),
             else => {
                 if (c < 0x20) {
-                    try std.fmt.format(writer, "\\u{x:0>4}", .{c});
+                    try writer.print("\\u{x:0>4}", .{c});
                 } else {
                     try writer.writeByte(c);
                 }
@@ -244,7 +246,7 @@ fn writeFieldIntPretty(writer: anytype, first: *bool, key: []const u8, value: u1
     try writer.writeByte('"');
     try writer.writeAll(key);
     try writer.writeAll("\": ");
-    try std.fmt.format(writer, "{d}", .{value});
+    try writer.print("{d}", .{value});
 }
 
 /// Dump URI components to stderr for debugging.
