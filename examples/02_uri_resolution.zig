@@ -22,7 +22,7 @@ const uri = @import("uri");
 const print = std.debug.print;
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -69,12 +69,12 @@ pub fn main() !void {
         defer resolved.deinit(allocator);
 
         // Format the resolved URI to a string for display
-        var result_buf = std.array_list.Managed(u8).init(allocator);
+        var result_buf: std.Io.Writer.Allocating = .init(allocator);
         defer result_buf.deinit();
-        try resolved.format(result_buf.writer());
+        try resolved.format(&result_buf.writer);
 
         const ref_display = if (tc.reference.len == 0) "(empty)" else tc.reference;
-        print("  \"{s:<12}\" => {s}\n", .{ ref_display, result_buf.items });
+        print("  \"{s:<12}\" => {s}\n", .{ ref_display, result_buf.writer.buffered() });
     }
 
     // =========================================================================
@@ -99,11 +99,11 @@ pub fn main() !void {
         var resolved = try uri.resolve(allocator, page_base, ref);
         defer resolved.deinit(allocator);
 
-        var result_buf = std.array_list.Managed(u8).init(allocator);
+        var result_buf: std.Io.Writer.Allocating = .init(allocator);
         defer result_buf.deinit();
-        try resolved.format(result_buf.writer());
+        try resolved.format(&result_buf.writer);
 
-        print("  Link: \"{s}\"\n  Resolved: {s}\n\n", .{ link, result_buf.items });
+        print("  Link: \"{s}\"\n  Resolved: {s}\n\n", .{ link, result_buf.writer.buffered() });
     }
 
     // =========================================================================
@@ -126,11 +126,11 @@ pub fn main() !void {
         var resolved = try uri.resolve(allocator, api_base, ref);
         defer resolved.deinit(allocator);
 
-        var result_buf = std.array_list.Managed(u8).init(allocator);
+        var result_buf: std.Io.Writer.Allocating = .init(allocator);
         defer result_buf.deinit();
-        try resolved.format(result_buf.writer());
+        try resolved.format(&result_buf.writer);
 
-        print("  Endpoint: \"{s}\" => {s}\n", .{ endpoint, result_buf.items });
+        print("  Endpoint: \"{s}\" => {s}\n", .{ endpoint, result_buf.writer.buffered() });
     }
 
     print("\n", .{});

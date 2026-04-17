@@ -20,7 +20,7 @@ const uri = @import("uri");
 const print = std.debug.print;
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -75,12 +75,12 @@ pub fn main() !void {
         var normalized = try uri.normalize(allocator, parsed);
         defer normalized.deinit(allocator);
 
-        var buf = std.array_list.Managed(u8).init(allocator);
+        var buf: std.Io.Writer.Allocating = .init(allocator);
         defer buf.deinit();
-        try normalized.format(buf.writer());
+        try normalized.format(&buf.writer);
 
         print("\nOriginal:   {s}\n", .{uri_str});
-        print("Normalized: {s}\n", .{buf.items});
+        print("Normalized: {s}\n", .{buf.writer.buffered()});
     }
 
     // =========================================================================
@@ -102,11 +102,11 @@ pub fn main() !void {
         var normalized = try uri.normalize(allocator, parsed);
         defer normalized.deinit(allocator);
 
-        var buf = std.array_list.Managed(u8).init(allocator);
+        var buf: std.Io.Writer.Allocating = .init(allocator);
         defer buf.deinit();
-        try normalized.format(buf.writer());
+        try normalized.format(&buf.writer);
 
-        print("  {s:<40} => {s}\n", .{ uri_str, buf.items });
+        print("  {s:<40} => {s}\n", .{ uri_str, buf.writer.buffered() });
     }
 
     print("\nAfter normalization, they can be reliably compared.\n", .{});
@@ -137,8 +137,8 @@ pub fn main() !void {
         const parsed = try uri.parse(request);
         var normalized = try uri.normalize(allocator, parsed);
 
-        var buf = std.array_list.Managed(u8).init(allocator);
-        try normalized.format(buf.writer());
+        var buf: std.Io.Writer.Allocating = .init(allocator);
+        try normalized.format(&buf.writer);
         const normalized_key = try buf.toOwnedSlice();
 
         // Clean up the normalized URI struct (we only need the string)
