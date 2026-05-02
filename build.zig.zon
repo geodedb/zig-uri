@@ -5,7 +5,7 @@
     .name = .uri,
 
     // Semantic versioning - https://semver.org/
-    .version = "0.1.0",
+    .version = "0.1.2",
 
     // Unique package fingerprint - do not modify
     .fingerprint = 0x841cb121b1ce5bcd,
@@ -17,8 +17,8 @@
     .dependencies = .{
         // thread-pool bounded thread pool for parallel operations
         .thread_pool = .{
-            .url = "git+https://gitlab.com/devnw/zig/thread-pool.git#c41388bdab88916bb453a20adae2c722405287d1",
-            .hash = "thread_pool-0.2.1-11B1BsqSdgCqx_EsSPzdPqfGhNFzonijUGYfDuy0fpTb",
+            .url = "git+https://gitlab.com/devnw/zig/thread-pool.git#v0.2.2",
+            .hash = "thread_pool-0.2.2-11B1BsqSdgAdUthtiFxVynrhft3Bv8q7_VLBsF3_z1oH",
         },
     },
 
