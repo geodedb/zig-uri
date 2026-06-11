@@ -505,6 +505,11 @@ fn parseAuthority(authority: []const u8, result: *Uri) ParseError!void {
         const port_str = remaining[1..];
         if (port_str.len > 0) {
             result.raw_port = port_str;
+            // RFC 3986 Section 3.2.3: port = *DIGIT. Reject signs and underscore
+            // separators that std.fmt.parseInt would otherwise accept (+443, 8_080).
+            for (port_str) |pc| {
+                if (!ascii.isDigit(pc)) return ParseError.InvalidPort;
+            }
             const port_num = std.fmt.parseInt(u16, port_str, 10) catch |err| switch (err) {
                 error.InvalidCharacter => return ParseError.InvalidPort,
                 error.Overflow => return ParseError.PortOutOfRange,
@@ -2098,4 +2103,15 @@ test "accepts valid bracketed host with port" {
 test "accepts valid bracketed host without port" {
     const u = try parse("http://[::1]/p");
     try std.testing.expectEqualStrings("[::1]", u.host.?);
+}
+
+test "rejects port with sign or underscore" {
+    try std.testing.expectError(ParseError.InvalidPort, parse("http://h:+443/p"));
+    try std.testing.expectError(ParseError.InvalidPort, parse("http://h:8_080/p"));
+    try std.testing.expectError(ParseError.InvalidPort, parse("http://h:-1/p"));
+}
+
+test "accepts plain digit port" {
+    const u = try parse("http://h:8080/p");
+    try std.testing.expectEqual(@as(u16, 8080), u.port.?);
 }
