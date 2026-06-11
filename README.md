@@ -3,7 +3,7 @@
 RFC 3986 compliant URI/URL parsing and manipulation library for Zig.
 
 > **Project Status:** Active Development
-> **Current Version:** v0.1.4
+> **Current Version:** v0.1.5
 > **GitLab:** [devnw/zig/uri](https://gitlab.com/devnw/zig/uri)
 
 ## Status

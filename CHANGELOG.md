@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-06-11
+
+Security, correctness, and performance hardening from a full appsec + audit pass.
+
+### Fixed
+- Parallel batch APIs (`parseUris`/`validateUris`/`normalizeUris`) could leave the
+  tail of `results` uninitialized for batches larger than 512 (floor-division
+  chunking); all inputs are now covered.
+- `Uri.authority()` returned `null`/stale data for owned URIs produced by
+  `resolve()`/`normalize()`/`dupe()`; it is now correct.
+- Double-free in `normalize()` and memory leaks in `serializeRaw()` and
+  `resolve()` under allocation failure.
+- Port parser rejected non-`DIGIT` strings (`+443`, `8_080`) per RFC 3986 §3.2.3.
+- Malformed authority with trailing bytes after an IPv6 `]` is now rejected.
+- `normalize()` keeps percent-encoded dot segments encoded (`%2E`/`%2E%2E`) so
+  they are never promoted to directory traversal; normalization is idempotent.
+- Host percent-encoding case is normalized (`%2f` → `%2F`) per RFC 3986 §6.2.2.2.
+- `zig build test-all`/`test-dataset` no longer emit a spurious `failed command`
+  diagnostic (removed `std.debug.print` from a test).
+
+### Changed
+- CI gates the RFC vector, acceptance, and dataset suites via `zig build test-all`.
+- The `version` constant is asserted against `build.zig.zon` to prevent drift.
+- Performance: normalize fast-paths, registry single-hash `getOrPut`, JSON writer
+  pre-sizing, and batch normalize reuses the canonical serialization.
+
+### Security
+- Added a real `std.testing.fuzz` target driving parse/normalize/resolve.
+- Documented consumer guidance (strict mode, input bounds, normalize-before-compare).
+
 ## [0.1.4] - 2026-06-11
 
 ### Changed
@@ -75,7 +105,8 @@ Initial development release.
 - Initial project structure
 - Basic CI/CD pipeline setup
 
-[Unreleased]: https://gitlab.com/devnw/zig/uri/-/compare/v0.1.4...HEAD
+[Unreleased]: https://gitlab.com/devnw/zig/uri/-/compare/v0.1.5...HEAD
+[0.1.5]: https://gitlab.com/devnw/zig/uri/-/compare/v0.1.4...v0.1.5
 [0.1.4]: https://gitlab.com/devnw/zig/uri/-/compare/v0.1.3...v0.1.4
 [0.1.3]: https://gitlab.com/devnw/zig/uri/-/compare/v0.1.2...v0.1.3
 [0.1.2]: https://gitlab.com/devnw/zig/uri/-/compare/v0.1.1...v0.1.2
