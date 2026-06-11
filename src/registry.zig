@@ -146,14 +146,16 @@ pub const Registry = struct {
             return RegistryError.InvalidUri;
         }
 
-        // Check for duplicate
-        if (self.resources.contains(uri_str)) {
-            return RegistryError.DuplicateUri;
-        }
-
-        // Allocate and store
+        // Single hash: getOrPut both detects duplicates and reserves the slot,
+        // avoiding a separate contains() probe.
         const uri_copy = self.allocator.dupe(u8, uri_str) catch return RegistryError.OutOfMemory;
         errdefer self.allocator.free(uri_copy);
+
+        const gop = self.resources.getOrPut(uri_copy) catch return RegistryError.OutOfMemory;
+        if (gop.found_existing) {
+            return RegistryError.DuplicateUri;
+        }
+        errdefer _ = self.resources.remove(uri_copy);
 
         const content_copy = self.allocator.dupe(u8, content) catch return RegistryError.OutOfMemory;
         errdefer self.allocator.free(content_copy);
@@ -164,15 +166,14 @@ pub const Registry = struct {
             null;
         errdefer if (ct_copy) |ct| self.allocator.free(ct);
 
-        const resource = Resource{
+        gop.key_ptr.* = uri_copy;
+        gop.value_ptr.* = Resource{
             .uri = uri_copy,
             .content = content_copy,
             .anchors = std.StringHashMap(Anchor).init(self.allocator),
             .content_type = ct_copy,
             .timestamp = 0,
         };
-
-        self.resources.put(uri_copy, resource) catch return RegistryError.OutOfMemory;
         self.total_bytes += content.len;
     }
 
