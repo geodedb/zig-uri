@@ -73,7 +73,7 @@ pub const Uri = struct {
 | `hasAuthority()` | Returns true if URI has a host |
 | `isUrn()` | Returns true if scheme is "urn" |
 | `authority()` | Returns the authority component as a string |
-| `format(writer)` | Writes URI to a writer |
+| `format(writer)` | Writes URI to a writer (Zig 0.16 custom format; use `"{f}"`) |
 | `dupe(allocator)` | Creates an owned copy with allocated memory |
 | `deinit(allocator)` | Frees an owned URI's memory |
 

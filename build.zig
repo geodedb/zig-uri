@@ -6,7 +6,8 @@ const std = @import("std");
 /// Build configuration for the URI library
 ///
 /// A fully RFC-compliant URI/URL parsing and manipulation library for Zig.
-/// Supports RFC 3986 (URI), RFC 3987 (IRI), and WHATWG URL Standard.
+/// Implements RFC 3986 (URI) and RFC 8141 (URN). RFC 3987 (IRI) and the
+/// WHATWG URL Standard are planned, not yet implemented.
 pub fn build(b: *std.Build) void {
     // Standard target and optimization options
     const target = b.standardTargetOptions(.{});

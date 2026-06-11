@@ -34,9 +34,30 @@ This project implements the following security measures:
 ### Code Security
 
 - Memory-safe Zig implementation
-- No external C dependencies. Core parsing uses Zig standard library only; optional `spice` dependency (Zig library, pinned to immutable commit SHA) for parallel batch operations
+- No external C dependencies. Core parsing uses Zig standard library only; optional `thread-pool` dependency (Zig library, pinned to an immutable git commit SHA plus Zig package hash) for parallel batch operations
 - Compile-time safety checks enabled
-- Fuzz testing for parser inputs (planned)
+- Fuzz testing for parser inputs via `std.testing.fuzz` (exercised by the CI `fuzz` stage)
+
+### Guidance for Consumers Making Security Decisions
+
+- **Use strict mode (the default) for untrusted input.** Non-strict mode
+  (`strict: false`) still rejects C0/DEL control bytes, but performs no other
+  structural character validation — backslashes, spaces, and high bytes pass
+  into components. Do not use non-strict parsing for SSRF/redirect/host
+  allow-list decisions.
+- **Bound input length for untrusted sources.** `ParseOptions.max_input_len`
+  defaults to `null` (unbounded). The parser is single-pass and allocation-free,
+  so cost is proportional to input size, but callers handling attacker-controlled
+  input should set `max_input_len` (the resource `Registry` enforces its own
+  `max_uri_len`, default 2048).
+- **Authorize on parsed components, then normalize.** `normalize()` removes dot
+  segments on the syntactic path *before* percent-decoding, so percent-encoded
+  dots (`%2E`) are not promoted to directory traversal.
+- **Compare hosts only after `normalize()`.** Normalization is RFC 3986-correct:
+  it lowercases the host and decodes percent-encoded unreserved octets, so
+  `int%65rnal`, `INTERNAL`, and `internal` all converge to the same host. A
+  consumer that allow/deny-lists on the *pre-normalization* host string can be
+  evaded; always normalize before comparing.
 
 ### Release Security
 

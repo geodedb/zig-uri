@@ -3,7 +3,7 @@
 RFC 3986 compliant URI/URL parsing and manipulation library for Zig.
 
 > **Project Status:** Active Development
-> **Current Version:** v0.1.0
+> **Current Version:** v0.1.4
 > **GitLab:** [devnw/zig/uri](https://gitlab.com/devnw/zig/uri)
 
 ## Status
@@ -11,13 +11,13 @@ RFC 3986 compliant URI/URL parsing and manipulation library for Zig.
 | Aspect | Info |
 |--------|------|
 | API Stability | Beta |
-| Zig Version | 0.15.1+ |
+| Zig Version | 0.16.0+ |
 | Platforms | Linux, macOS, Windows |
 
 ## Features
 
 - **RFC Compliant**: Strict adherence to RFC 3986 (URI Generic Syntax) and RFC 8141 (URN)
-- **Minimal Dependencies**: Core parsing uses only Zig standard library; optional `spice` dependency for parallel batch operations
+- **Minimal Dependencies**: Core parsing uses only Zig standard library; optional `thread-pool` dependency for parallel batch operations
 - **Zero-Copy Parsing**: No allocations for basic parsing operations
 - **Cross-Platform**: Works on all Zig-supported targets
 - **Full Component Access**: Scheme, authority, userinfo, host, port, path, query, fragment
@@ -115,7 +115,7 @@ const resource = try reg.get("https://example.com/schema.json", false);
 
 ## URI Components
 
-```
+```text
          foo://user:pass@example.com:8042/over/there?name=ferret#nose
          \_/   \________________________/\_________/ \_________/ \__/
           |              |                    |            |       |
@@ -127,7 +127,7 @@ const resource = try reg.get("https://example.com/schema.json", false);
 
 The authority component breaks down into:
 
-```
+```text
          userinfo       host          port
          +--+---+ +------+------+ +---+---+
          user:pass@www.example.com:8080
@@ -245,7 +245,7 @@ make dev
 
 ### Requirements
 
-- Zig 0.15.1 or compatible
+- Zig 0.16.0 or compatible
 
 ## Cross-Platform Support
 

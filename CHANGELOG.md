@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-11
+
+### Changed
+- Aligned the `thread-pool` dependency pin (immutable git commit SHA + Zig package hash).
+
+## [0.1.3] - 2026-06-11
+
+### Changed
+- Release bump with tagged sibling dependencies.
+
+## [0.1.2] - 2026-06-11
+
+### Changed
+- Release bump with tagged sibling dependencies.
+
+## [0.1.1] - 2026-06-11
+
+### Changed
+- Migrated the parallel batch-operations dependency from `spice` to `thread-pool`
+  (pinned by immutable git commit SHA + Zig package hash).
+- Raised the minimum supported Zig version to 0.16.0 (from 0.15.x).
+- Standardized `.pre-commit-config.yaml` from the geode upstream.
+
 ## [0.1.0] - 2026-01-24
 
 Initial public release with RFC 3986 compliant URI parsing.
@@ -52,6 +75,10 @@ Initial development release.
 - Initial project structure
 - Basic CI/CD pipeline setup
 
-[Unreleased]: https://gitlab.com/devnw/zig/uri/-/compare/v0.1.0...HEAD
+[Unreleased]: https://gitlab.com/devnw/zig/uri/-/compare/v0.1.4...HEAD
+[0.1.4]: https://gitlab.com/devnw/zig/uri/-/compare/v0.1.3...v0.1.4
+[0.1.3]: https://gitlab.com/devnw/zig/uri/-/compare/v0.1.2...v0.1.3
+[0.1.2]: https://gitlab.com/devnw/zig/uri/-/compare/v0.1.1...v0.1.2
+[0.1.1]: https://gitlab.com/devnw/zig/uri/-/compare/v0.1.0...v0.1.1
 [0.1.0]: https://gitlab.com/devnw/zig/uri/-/compare/v0.0.1...v0.1.0
 [0.0.1]: https://gitlab.com/devnw/zig/uri/-/releases/v0.0.1
