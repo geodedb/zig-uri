@@ -885,6 +885,72 @@ fn normalizePercentEncoding(allocator: Allocator, input: []const u8) (ParseError
     return try result.toOwnedSlice();
 }
 
+/// If `seg` consists solely of literal '.' and percent-encoded dots (`%2E`/`%2e`),
+/// returns the number of dots (its decoded length); otherwise returns 0.
+/// A return of 1 or 2 means the segment decodes to exactly "." or ".." — a
+/// dot-segment that must not be confused with a path operator.
+fn dotSegmentDotCount(seg: []const u8) usize {
+    if (seg.len == 0) return 0;
+    var dots: usize = 0;
+    var j: usize = 0;
+    while (j < seg.len) {
+        if (seg[j] == '.') {
+            dots += 1;
+            j += 1;
+        } else if (seg[j] == '%' and j + 2 < seg.len and
+            seg[j + 1] == '2' and (seg[j + 2] == 'e' or seg[j + 2] == 'E'))
+        {
+            dots += 1;
+            j += 3;
+        } else {
+            return 0; // a non-dot byte: not a pure dot segment
+        }
+    }
+    return dots;
+}
+
+/// Percent-encoding normalization for a PATH (RFC 3986 Section 6.2.2.2), but
+/// dot-segment-aware: a segment that would decode to exactly "." or ".." is kept
+/// percent-encoded in canonical form ("%2E"/"%2E%2E") rather than decoded, so
+/// percent-encoded dots are never promoted to active path operators and
+/// normalization is idempotent. All other segments decode normally.
+fn normalizePathPercentEncoding(allocator: Allocator, path: []const u8) (ParseError || Allocator.Error)![]u8 {
+    // Fast path: without a percent sign there is nothing to normalize.
+    if (mem.indexOfScalar(u8, path, '%') == null) {
+        return allocator.dupe(u8, path);
+    }
+
+    var result = std.array_list.Managed(u8).init(allocator);
+    errdefer result.deinit();
+    try result.ensureTotalCapacity(path.len);
+
+    var i: usize = 0;
+    while (i < path.len) {
+        if (path[i] == '/') {
+            try result.append('/');
+            i += 1;
+            continue;
+        }
+        // Current segment is path[i..seg_end).
+        var seg_end = i;
+        while (seg_end < path.len and path[seg_end] != '/') : (seg_end += 1) {}
+        const seg = path[i..seg_end];
+
+        switch (dotSegmentDotCount(seg)) {
+            1 => try result.appendSlice("%2E"),
+            2 => try result.appendSlice("%2E%2E"),
+            else => {
+                const decoded = try normalizePercentEncoding(allocator, seg);
+                defer allocator.free(decoded);
+                try result.appendSlice(decoded);
+            },
+        }
+        i = seg_end;
+    }
+
+    return try result.toOwnedSlice();
+}
+
 /// Normalize a URI (RFC 3986 Section 6).
 ///
 /// Applies the following normalizations:
@@ -936,10 +1002,13 @@ pub fn normalize(allocator: Allocator, uri_input: Uri) (ParseError || Allocator.
         result.path = normalized_path;
     }
 
-    // Percent-encoding normalization (Section 6.2.2.2)
-    // Apply to all string components that may contain percent-encoded sequences
+    // Percent-encoding normalization (Section 6.2.2.2) for the path. Uses a
+    // dot-segment-aware variant: a segment that would decode to exactly "." or
+    // ".." is kept percent-encoded (canonical "%2E"/"%2E%2E") so encoded dots are
+    // never promoted to path operators and normalization stays idempotent
+    // (re-normalizing the output yields the same path).
     {
-        const normalized = try normalizePercentEncoding(allocator, result.path);
+        const normalized = try normalizePathPercentEncoding(allocator, result.path);
         allocator.free(result.path);
         result.path = normalized;
     }
@@ -2157,9 +2226,41 @@ test "normalize does not activate percent-encoded dot segments" {
     const u = try parse("http://h/a/b/%2e%2e/c");
     var n = try normalize(allocator, u);
     defer n.deinit(allocator);
-    // %2e%2e decodes to a literal ".." segment name, NOT a parent-dir traversal.
-    // The /b segment must NOT be popped.
-    try std.testing.expect(std.mem.indexOf(u8, n.path, "b") != null);
+    // %2e%2e is a segment literally named ".." (kept encoded), NOT a parent-dir
+    // operator. The /b segment must NOT be popped, and the output must contain
+    // no live ".." segment (no traversal promotion) — uppercased to %2E%2E.
+    try std.testing.expectEqualStrings("/a/b/%2E%2E/c", n.path);
+    try std.testing.expect(std.mem.indexOf(u8, n.path, "/../") == null);
+}
+
+test "normalize of percent-encoded dot segments is idempotent" {
+    const allocator = std.testing.allocator;
+    const inputs = [_][]const u8{
+        "http://h/a/b/%2e%2e/c",
+        "http://h/%2e/x",
+        "http://h/a/%2E%2E/b",
+        "http://h/a/b/../c", // literal traversal: collapses, then stable
+    };
+    for (inputs) |s| {
+        const u = try parse(s);
+        var n1 = try normalize(allocator, u);
+        defer n1.deinit(allocator);
+        // Re-parse the normalized serialization and normalize again.
+        const reparsed = try parse(n1.raw);
+        var n2 = try normalize(allocator, reparsed);
+        defer n2.deinit(allocator);
+        try std.testing.expectEqualStrings(n1.path, n2.path);
+    }
+}
+
+test "normalize decodes non-dot percent-encoding in path segments" {
+    const allocator = std.testing.allocator;
+    // %66 -> 'f': a segment like ".foo" (%2Efoo) still decodes normally; only
+    // pure dot segments are kept encoded.
+    const u = try parse("http://h/%2Efoo/%66ile");
+    var n = try normalize(allocator, u);
+    defer n.deinit(allocator);
+    try std.testing.expectEqualStrings("/.foo/file", n.path);
 }
 
 test "normalize still removes literal dot segments" {

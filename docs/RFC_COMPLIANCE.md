@@ -53,12 +53,14 @@ This document details the RFC compliance status of the URI library.
 | 6.2.2.3 Path Segment | ✅ Implemented | Dot removal |
 | 6.2.3 Scheme-Based | ✅ Implemented | Default port removal, empty path |
 
-> **Security note (ordering):** Dot-segment removal operates on the *syntactic*
-> path **before** percent-decoding. This means percent-encoded dots (`%2E`) are
-> **not** activated as directory traversal — e.g. `http://h/a/b/%2e%2e/c`
-> normalizes to a path that retains the `b` segment rather than collapsing to
-> `/a/c`. Consumers that treat encoded segments as opaque are not surprised by a
-> normalize step turning them into traversal.
+> **Security note (encoded dot segments):** Dot-segment removal runs on the
+> *syntactic* path (literal `.`/`..` only). A path segment that would decode to
+> exactly `.` or `..` (e.g. `%2e%2e`) is **kept percent-encoded** (canonicalized
+> to `%2E`/`%2E%2E`) and is **never** promoted to a directory-traversal operator.
+> So `http://h/a/b/%2e%2e/c` normalizes to `/a/b/%2E%2E/c` (the `b` segment is
+> retained, no live `..`), and normalization is **idempotent** — re-normalizing
+> the output yields the same path. Non-dot percent-encodings in path segments
+> still decode normally (e.g. `%2Efoo` → `.foo`, `%66ile` → `file`).
 
 ## RFC 8141 - URN Syntax
 
