@@ -899,6 +899,16 @@ pub fn normalize(allocator: Allocator, uri_input: Uri) (ParseError || Allocator.
         }
     }
 
+    // Path normalization - remove dot segments on the *syntactic* path first
+    // (Section 6.2.2.3), BEFORE percent-decoding. This prevents percent-encoded
+    // "%2E" dots from being promoted to active directory traversal
+    // (e.g. /a/b/%2e%2e/c must NOT collapse to /a/c).
+    if (pathHasDotSegments(result.path)) {
+        const normalized_path = try removeDotSegments(allocator, result.path);
+        allocator.free(result.path);
+        result.path = normalized_path;
+    }
+
     // Percent-encoding normalization (Section 6.2.2.2)
     // Apply to all string components that may contain percent-encoded sequences
     {
@@ -920,13 +930,6 @@ pub fn normalize(allocator: Allocator, uri_input: Uri) (ParseError || Allocator.
         const normalized = try normalizePercentEncoding(allocator, ui);
         allocator.free(result.userinfo.?);
         result.userinfo = normalized;
-    }
-
-    // Path normalization - remove dot segments (Section 6.2.2.3)
-    {
-        const normalized_path = try removeDotSegments(allocator, result.path);
-        allocator.free(result.path);
-        result.path = normalized_path;
     }
 
     // Scheme-based normalization (Section 6.2.3)
@@ -2114,4 +2117,22 @@ test "rejects port with sign or underscore" {
 test "accepts plain digit port" {
     const u = try parse("http://h:8080/p");
     try std.testing.expectEqual(@as(u16, 8080), u.port.?);
+}
+
+test "normalize does not activate percent-encoded dot segments" {
+    const allocator = std.testing.allocator;
+    const u = try parse("http://h/a/b/%2e%2e/c");
+    var n = try normalize(allocator, u);
+    defer n.deinit(allocator);
+    // %2e%2e decodes to a literal ".." segment name, NOT a parent-dir traversal.
+    // The /b segment must NOT be popped.
+    try std.testing.expect(std.mem.indexOf(u8, n.path, "b") != null);
+}
+
+test "normalize still removes literal dot segments" {
+    const allocator = std.testing.allocator;
+    const u = try parse("http://h/a/b/../c");
+    var n = try normalize(allocator, u);
+    defer n.deinit(allocator);
+    try std.testing.expectEqualStrings("/a/c", n.path);
 }
