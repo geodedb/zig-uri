@@ -182,7 +182,7 @@ pub fn parseUris(
     }
 
     const pool = getPool();
-    const chunk_size = @max(8, inputs.len / MAX_CHUNKS);
+    const chunk_size = @max(8, (inputs.len + MAX_CHUNKS - 1) / MAX_CHUNKS);
     var chunks: [MAX_CHUNKS]ParseChunk = undefined;
     var batch: [MAX_CHUNKS]tp.BatchTask = undefined;
     var n: usize = 0;
@@ -294,7 +294,7 @@ pub fn validateUris(
     }
 
     const pool = getPool();
-    const chunk_size = @max(8, inputs.len / MAX_CHUNKS);
+    const chunk_size = @max(8, (inputs.len + MAX_CHUNKS - 1) / MAX_CHUNKS);
     var chunks: [MAX_CHUNKS]ValidateChunk = undefined;
     var batch: [MAX_CHUNKS]tp.BatchTask = undefined;
     var n: usize = 0;
@@ -391,7 +391,7 @@ pub fn normalizeUris(
     }
 
     const pool = getPool();
-    const chunk_size = @max(4, inputs.len / MAX_CHUNKS);
+    const chunk_size = @max(4, (inputs.len + MAX_CHUNKS - 1) / MAX_CHUNKS);
     var chunks: [MAX_CHUNKS]NormalizeChunk = undefined;
     var batch: [MAX_CHUNKS]tp.BatchTask = undefined;
     var n: usize = 0;
@@ -654,5 +654,54 @@ test "parallel normalize - large batch" {
         try std.testing.expect(result.success);
         try std.testing.expectEqualStrings("http://example.com/path", result.normalized.?);
         allocator.free(result.normalized.?);
+    }
+}
+
+test "parseUris covers all inputs for large batches (no tail-drop)" {
+    const allocator = std.testing.allocator;
+    const n = 1000;
+    const inputs = try allocator.alloc([]const u8, n);
+    defer allocator.free(inputs);
+    for (inputs) |*p| p.* = "https://example.com/path";
+    const results = try allocator.alloc(ParseResult, n);
+    defer allocator.free(results);
+    for (results) |*r| r.* = .{ .components = null, .success = false, .error_msg = "UNWRITTEN" };
+    parseUris(inputs, results);
+    defer deinitPool();
+    for (results) |r| {
+        try std.testing.expect(r.success);
+    }
+}
+
+test "validateUris covers all inputs for large batches (no tail-drop)" {
+    const allocator = std.testing.allocator;
+    const n = 1000;
+    const inputs = try allocator.alloc([]const u8, n);
+    defer allocator.free(inputs);
+    for (inputs) |*p| p.* = "https://example.com/path";
+    const results = try allocator.alloc(ValidateResult, n);
+    defer allocator.free(results);
+    for (results) |*r| r.* = .{ .valid = false, .error_msg = "UNWRITTEN" };
+    validateUris(inputs, results);
+    defer deinitPool();
+    for (results) |r| {
+        try std.testing.expect(r.valid);
+    }
+}
+
+test "normalizeUris covers all inputs for large batches (no tail-drop)" {
+    const allocator = std.testing.allocator;
+    const n = 1000;
+    const inputs = try allocator.alloc([]const u8, n);
+    defer allocator.free(inputs);
+    for (inputs) |*p| p.* = "https://example.com/a/b/../c";
+    const results = try allocator.alloc(NormalizeResult, n);
+    defer allocator.free(results);
+    for (results) |*r| r.* = .{ .normalized = null, .success = false, .error_msg = "UNWRITTEN" };
+    normalizeUris(allocator, inputs, results);
+    defer deinitPool();
+    for (results) |r| {
+        try std.testing.expect(r.success);
+        if (r.normalized) |s| allocator.free(s);
     }
 }
