@@ -892,10 +892,24 @@ pub fn normalize(allocator: Allocator, uri_input: Uri) (ParseError || Allocator.
     }
 
     if (result.host) |h| {
-        // Don't lowercase IPv6 addresses
+        // Don't touch IPv6 / IPvFuture literals.
         if (h.len > 0 and h[0] != '[') {
-            const mutable = @constCast(h);
-            for (mutable) |*c| c.* = ascii.toLower(c.*);
+            // Percent-normalize first (uppercases remaining hex, decodes
+            // unreserved) so e.g. %2f becomes %2F (RFC 3986 Section 6.2.2.2),
+            // then lowercase only the bytes outside percent-encoded triplets.
+            const pn = try normalizePercentEncoding(allocator, h);
+            allocator.free(result.host.?);
+            result.host = pn;
+            const mutable = @constCast(result.host.?);
+            var hi: usize = 0;
+            while (hi < mutable.len) {
+                if (mutable[hi] == '%' and hi + 2 < mutable.len) {
+                    hi += 3; // skip "%XX" (hex already uppercased)
+                    continue;
+                }
+                mutable[hi] = ascii.toLower(mutable[hi]);
+                hi += 1;
+            }
         }
     }
 
@@ -2135,4 +2149,16 @@ test "normalize still removes literal dot segments" {
     var n = try normalize(allocator, u);
     defer n.deinit(allocator);
     try std.testing.expectEqualStrings("/a/c", n.path);
+}
+
+test "normalize uppercases percent-encoding hex in host" {
+    const allocator = std.testing.allocator;
+    const a = try parse("http://ex%2Fample.com/p");
+    var na = try normalize(allocator, a);
+    defer na.deinit(allocator);
+    const b = try parse("http://ex%2fample.com/p");
+    var nb = try normalize(allocator, b);
+    defer nb.deinit(allocator);
+    try std.testing.expectEqualStrings(na.host.?, nb.host.?);
+    try std.testing.expect(std.mem.indexOf(u8, na.host.?, "%2F") != null);
 }
