@@ -156,7 +156,10 @@ fn writeFieldIntDispatch(writer: anytype, first: *bool, key: []const u8, value: 
 ///
 /// Userinfo passwords are automatically redacted.
 pub fn toJson(allocator: Allocator, uri: Uri) Allocator.Error![]u8 {
-    var aw = std.Io.Writer.Allocating.init(allocator);
+    // Pre-size to the raw length plus JSON punctuation/key overhead to avoid
+    // growth reallocations during serialization.
+    var aw = std.Io.Writer.Allocating.initCapacity(allocator, uri.raw.len + 256) catch
+        std.Io.Writer.Allocating.init(allocator);
     errdefer aw.deinit();
 
     const writer = &aw.writer;
@@ -173,7 +176,9 @@ pub fn toJson(allocator: Allocator, uri: Uri) Allocator.Error![]u8 {
 ///
 /// Userinfo passwords are automatically redacted.
 pub fn toJsonPretty(allocator: Allocator, uri: Uri) Allocator.Error![]u8 {
-    var aw = std.Io.Writer.Allocating.init(allocator);
+    // Pre-size to avoid growth reallocations during serialization.
+    var aw = std.Io.Writer.Allocating.initCapacity(allocator, uri.raw.len + 384) catch
+        std.Io.Writer.Allocating.init(allocator);
     errdefer aw.deinit();
 
     const writer = &aw.writer;
