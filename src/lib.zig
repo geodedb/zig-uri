@@ -45,19 +45,20 @@
 //! ```zig
 //! const base = try uri.parse("http://example.com/a/b/c");
 //! const reference = try uri.parse("../d");
-//! const resolved = try uri.resolve(base, reference);
+//! const resolved = try uri.resolve(allocator, base, reference);
+//! defer resolved.deinit(allocator);
 //! // Result: "http://example.com/a/d"
 //! ```
 //!
 //! ### Percent-Encoding/Decoding
 //!
 //! ```zig
-//! // Encode special characters
-//! const encoded = try uri.percentEncode(allocator, "hello world!");
-//! // Result: "hello%20world%21"
+//! // Encode special characters (the component selects the allowed set)
+//! const encoded = try uri.percentEncode(allocator, "hello world!", .query);
+//! // Result: "hello%20world!"  (space is encoded; '!' is a sub-delim, kept)
 //!
 //! // Decode percent-encoded strings
-//! const decoded = try uri.percentDecode(allocator, "hello%20world%21");
+//! const decoded = try uri.percentDecode(allocator, "hello%20world!");
 //! // Result: "hello world!"
 //! ```
 //!
@@ -87,7 +88,7 @@
 //!
 //! - No memory allocation required for basic parsing
 //! - The input string must outlive the parsed URI structure
-//! - For owned copies, use `Uri.dupe(allocator)` or `Uri.format(allocator)`
+//! - For owned copies, use `Uri.dupe(allocator)`
 //!
 //! ## Validation Levels
 //!
@@ -108,7 +109,7 @@
 //! | RFC 3986 | 6 | Normalization | Implemented |
 //! | RFC 3987 | 2 | IRI syntax | Planned |
 //! | RFC 6874 | 2 | IPv6 Zone ID | Planned |
-//! | WHATWG | - | URL Standard | Partial |
+//! | WHATWG | - | URL Standard | Planned |
 //!
 //! ## License
 //!
