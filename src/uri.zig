@@ -470,10 +470,15 @@ fn parseAuthority(authority: []const u8, result: *Uri) ParseError!void {
     // Parse host and port
     // Check for IPv6 address (enclosed in brackets)
     if (remaining.len > 0 and remaining[0] == '[') {
-        // IPv6 address
+        // IPv6 / IPvFuture address
         if (mem.indexOf(u8, remaining, "]")) |bracket_end| {
             result.host = remaining[0 .. bracket_end + 1];
             remaining = remaining[bracket_end + 1 ..];
+            // After the closing bracket, only a port (":...") or end-of-authority
+            // is valid; any other trailing bytes are malformed.
+            if (remaining.len > 0 and remaining[0] != ':') {
+                return ParseError.InvalidHost;
+            }
         } else {
             return ParseError.UnclosedIPv6Bracket;
         }
@@ -491,9 +496,6 @@ fn parseAuthority(authority: []const u8, result: *Uri) ParseError!void {
         }
         if (host_end > 0) {
             result.host = remaining[0..host_end];
-        } else if (remaining.len > 0 and !mem.startsWith(u8, remaining, ":")) {
-            result.host = remaining;
-            remaining = "";
         }
         remaining = remaining[host_end..];
     }
@@ -2081,4 +2083,19 @@ test "authority() includes userinfo and port for resolved URIs" {
     var resolved = try resolve(allocator, base, ref);
     defer resolved.deinit(allocator);
     try std.testing.expectEqualStrings("user@example.com:8443", resolved.authority().?);
+}
+
+test "rejects trailing junk after IPv6 bracket" {
+    try std.testing.expectError(ParseError.InvalidHost, parse("http://[::1]xyz/p"));
+}
+
+test "accepts valid bracketed host with port" {
+    const u = try parse("http://[::1]:8080/p");
+    try std.testing.expectEqualStrings("[::1]", u.host.?);
+    try std.testing.expectEqual(@as(u16, 8080), u.port.?);
+}
+
+test "accepts valid bracketed host without port" {
+    const u = try parse("http://[::1]/p");
+    try std.testing.expectEqualStrings("[::1]", u.host.?);
 }
