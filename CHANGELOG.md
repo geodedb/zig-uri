@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-06-11
+
+### Changed
+- Bump `thread-pool` dependency to v0.2.5.
+
 ## [0.1.5] - 2026-06-11
 
 Security, correctness, and performance hardening from a full appsec + audit pass.
