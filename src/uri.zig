@@ -833,6 +833,11 @@ fn removeLastSegment(output: *std.array_list.Managed(u8)) void {
 /// - Decodes percent-encoded unreserved characters (ALPHA, DIGIT, '-', '.', '_', '~')
 /// - Uppercases hex digits in percent-encoded sequences that remain encoded
 fn normalizePercentEncoding(allocator: Allocator, input: []const u8) (ParseError || Allocator.Error)![]u8 {
+    // Fast path: without a percent sign there is nothing to normalize.
+    if (mem.indexOfScalar(u8, input, '%') == null) {
+        return allocator.dupe(u8, input);
+    }
+
     var result = std.array_list.Managed(u8).init(allocator);
     errdefer result.deinit();
     try result.ensureTotalCapacity(input.len);
@@ -2161,4 +2166,14 @@ test "normalize uppercases percent-encoding hex in host" {
     defer nb.deinit(allocator);
     try std.testing.expectEqualStrings(na.host.?, nb.host.?);
     try std.testing.expect(std.mem.indexOf(u8, na.host.?, "%2F") != null);
+}
+
+test "normalize fast-paths preserve output" {
+    const allocator = std.testing.allocator;
+    const u = try parse("http://example.com/api/v1/users?q=1#f");
+    var n = try normalize(allocator, u);
+    defer n.deinit(allocator);
+    try std.testing.expectEqualStrings("/api/v1/users", n.path);
+    try std.testing.expectEqualStrings("q=1", n.query.?);
+    try std.testing.expectEqualStrings("f", n.fragment.?);
 }
