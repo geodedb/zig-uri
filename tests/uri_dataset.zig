@@ -1030,40 +1030,22 @@ test "API Gateway URLs" {
 // Test Statistics
 // =============================================================================
 
-test "Dataset Statistics" {
-    // This test just prints statistics about the dataset
-    // The actual test coverage is in all the other tests
-    std.debug.print("\n=== URI Dataset Test Statistics ===\n", .{});
-    std.debug.print("Test categories covered:\n", .{});
-    std.debug.print("  - HTTP/HTTPS URLs (basic, auth, query, fragment, paths)\n", .{});
-    std.debug.print("  - IPv4 and IPv6 addresses\n", .{});
-    std.debug.print("  - Localhost and special hosts\n", .{});
-    std.debug.print("  - File URLs (Unix, Windows, UNC)\n", .{});
-    std.debug.print("  - Database URIs (PostgreSQL, MySQL, MongoDB, Redis, SQLite, etc.)\n", .{});
-    std.debug.print("  - FTP/SFTP/SSH URLs\n", .{});
-    std.debug.print("  - Git URLs\n", .{});
-    std.debug.print("  - WebSocket URLs\n", .{});
-    std.debug.print("  - Mailto URLs\n", .{});
-    std.debug.print("  - Tel URLs\n", .{});
-    std.debug.print("  - Data URLs\n", .{});
-    std.debug.print("  - URNs (ISBN, UUID, IETF, OID, etc.)\n", .{});
-    std.debug.print("  - Magnet URLs\n", .{});
-    std.debug.print("  - Custom application schemes\n", .{});
-    std.debug.print("  - LDAP URLs\n", .{});
-    std.debug.print("  - S3 URLs\n", .{});
-    std.debug.print("  - Docker Registry URLs\n", .{});
-    std.debug.print("  - Kubernetes Resource URLs\n", .{});
-    std.debug.print("  - News/NNTP URLs\n", .{});
-    std.debug.print("  - Gopher URLs\n", .{});
-    std.debug.print("  - IRC URLs\n", .{});
-    std.debug.print("  - SIP URLs\n", .{});
-    std.debug.print("  - XMPP URLs\n", .{});
-    std.debug.print("  - Streaming URLs (RTSP, RTMP)\n", .{});
-    std.debug.print("  - Relative references\n", .{});
-    std.debug.print("  - Edge cases and special characters\n", .{});
-    std.debug.print("  - Container URLs\n", .{});
-    std.debug.print("  - Cloud Provider URLs\n", .{});
-    std.debug.print("  - Version Control URLs\n", .{});
-    std.debug.print("  - API Gateway URLs\n", .{});
-    std.debug.print("===================================\n", .{});
+test "Dataset coverage sanity" {
+    // The dataset's real coverage lives in the category tests above. This test
+    // intentionally emits NO output: writing to stdout/stderr from a test
+    // corrupts the Zig 0.16 build-runner --listen=- IPC stream and produces a
+    // spurious "failed command" diagnostic in `zig build test-all`.
+    // Assert a few representative inputs across the major categories parse.
+    const samples = [_][]const u8{
+        "https://user:pass@example.com:8443/a/b?q=1#f", // http auth/query/fragment
+        "http://[2001:db8::1]:80/p", // IPv6
+        "file:///etc/hosts", // file
+        "urn:isbn:0451450523", // URN
+        "mailto:user@example.com", // mailto
+        "postgresql://localhost/db", // database
+    };
+    for (samples) |s| {
+        var u = try uri.parse(s);
+        defer u.deinit(std.testing.allocator);
+    }
 }
