@@ -12,6 +12,12 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // Expose the package version (from build.zig.zon) to the library unit tests
+    // so a drift-guard test can assert src/lib.zig's `version` constant matches.
+    const package_version = @import("build.zig.zon").version;
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "version", package_version);
+
     // thread-pool parallelism option
     const enable_tp = b.option(bool, "thread-pool", "Enable thread-pool-based parallelism") orelse true;
 
@@ -45,6 +51,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     if (tp_mod) |tm| lib_test_mod.addImport("thread_pool", tm);
+    lib_test_mod.addImport("build_options", build_options.createModule());
     const lib_unit_tests = b.addTest(.{
         .root_module = lib_test_mod,
     });

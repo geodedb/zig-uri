@@ -272,7 +272,7 @@ pub const dump = debug.dump;
 pub const version = std.SemanticVersion{
     .major = 0,
     .minor = 1,
-    .patch = 0,
+    .patch = 4,
 };
 
 // =============================================================================
@@ -314,4 +314,13 @@ test "parallel re-export is reachable" {
     for (results) |r| {
         try std.testing.expect(r.success);
     }
+}
+
+test "version constant matches build.zig.zon" {
+    // build_options.version is injected from build.zig.zon by build.zig, so this
+    // fails if src/lib.zig's `version` drifts from the package manifest.
+    const expected = @import("build_options").version;
+    var buf: [32]u8 = undefined;
+    const ours = try std.fmt.bufPrint(&buf, "{d}.{d}.{d}", .{ version.major, version.minor, version.patch });
+    try std.testing.expectEqualStrings(expected, ours);
 }
