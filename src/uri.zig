@@ -165,12 +165,18 @@ pub const Uri = struct {
     pub fn authority(self: Uri) ?[]const u8 {
         if (self.host == null) return null;
 
-        // Find the authority portion in the raw string
+        // Fast path: when there is no userinfo and no port, the authority IS
+        // the host. Correct for owned URIs (resolve/normalize/dupe) whose `raw`
+        // may be empty or pre-normalization.
+        if (self.userinfo == null and self.raw_port == null) return self.host;
+
+        // Otherwise the authority is contiguous in `raw`. resolve()/normalize()
+        // keep `raw` accurate by re-serializing; parse() keeps the original.
         const raw = self.raw;
         const scheme_end = if (self.scheme) |s| s.len + 1 else 0; // +1 for ':'
 
         // Check for "//" after scheme
-        if (raw.len > scheme_end + 2 and
+        if (raw.len >= scheme_end + 2 and
             raw[scheme_end] == '/' and
             raw[scheme_end + 1] == '/')
         {
@@ -227,6 +233,17 @@ pub const Uri = struct {
             try writer.writeByte('#');
             try writer.writeAll(f);
         }
+    }
+
+    /// Serialize this URI to an owned string from its structured fields.
+    /// Used by resolve()/normalize() to keep `raw` accurate for owned URIs,
+    /// so raw-derived accessors (e.g. authority()) stay correct.
+    fn serializeRaw(self: Uri, allocator: Allocator) Allocator.Error![]u8 {
+        var aw = std.Io.Writer.Allocating.init(allocator);
+        errdefer aw.deinit();
+        self.format(&aw.writer) catch return error.OutOfMemory;
+        var al = aw.toArrayList();
+        return al.toOwnedSlice(allocator);
     }
 
     /// Create an owned copy of the URI with allocated strings.
@@ -672,9 +689,7 @@ pub fn resolve(allocator: Allocator, base: Uri, reference: Uri) (ParseError || A
     const owned_raw_port = if (src_raw_port) |rp| try allocator.dupe(u8, rp) else null;
     errdefer if (owned_raw_port) |rp| allocator.free(rp);
 
-    const owned_raw = try allocator.dupe(u8, "");
-
-    return Uri{
+    var result = Uri{
         .scheme = owned_scheme,
         .userinfo = owned_userinfo,
         .host = owned_host,
@@ -683,10 +698,14 @@ pub fn resolve(allocator: Allocator, base: Uri, reference: Uri) (ParseError || A
         .query = owned_query,
         .fragment = owned_fragment,
         .raw_port = owned_raw_port,
-        .raw = owned_raw,
+        .raw = "",
         .urn = null,
         .owned = true,
     };
+    // Keep raw an accurate serialization of the resolved fields so raw-derived
+    // accessors (e.g. authority()) are correct.
+    result.raw = try result.serializeRaw(allocator);
+    return result;
 }
 
 /// Merge base and reference paths (RFC 3986 Section 5.2.3).
@@ -925,6 +944,12 @@ pub fn normalize(allocator: Allocator, uri_input: Uri) (ParseError || Allocator.
             result.path = try allocator.dupe(u8, "/");
         }
     }
+
+    // Keep raw consistent with the normalized fields so raw-derived accessors
+    // (e.g. authority()) are correct rather than reflecting the pre-normalized
+    // input carried over by dupe().
+    allocator.free(result.raw);
+    result.raw = try result.serializeRaw(allocator);
 
     return result;
 }
@@ -2029,4 +2054,31 @@ test "authority with host only" {
     const auth = result.authority();
     try std.testing.expect(auth != null);
     try std.testing.expectEqualStrings("example.com", auth.?);
+}
+
+test "authority() is correct for resolved URIs" {
+    const allocator = std.testing.allocator;
+    const base = try parse("https://example.com/a/b");
+    const ref = try parse("../c");
+    var resolved = try resolve(allocator, base, ref);
+    defer resolved.deinit(allocator);
+    try std.testing.expect(resolved.authority() != null);
+    try std.testing.expectEqualStrings("example.com", resolved.authority().?);
+}
+
+test "authority() is correct for normalized URIs" {
+    const allocator = std.testing.allocator;
+    const u = try parse("HTTP://EXAMPLE.COM:80/x");
+    var n = try normalize(allocator, u);
+    defer n.deinit(allocator);
+    try std.testing.expectEqualStrings("example.com", n.authority().?);
+}
+
+test "authority() includes userinfo and port for resolved URIs" {
+    const allocator = std.testing.allocator;
+    const base = try parse("https://user@example.com:8443/a/b");
+    const ref = try parse("c");
+    var resolved = try resolve(allocator, base, ref);
+    defer resolved.deinit(allocator);
+    try std.testing.expectEqualStrings("user@example.com:8443", resolved.authority().?);
 }
