@@ -242,8 +242,13 @@ pub const Uri = struct {
         var aw = std.Io.Writer.Allocating.init(allocator);
         errdefer aw.deinit();
         self.format(&aw.writer) catch return error.OutOfMemory;
+        // toArrayList() transfers buffer ownership out of `aw`, so the errdefer
+        // above no longer covers it; free explicitly if toOwnedSlice fails.
         var al = aw.toArrayList();
-        return al.toOwnedSlice(allocator);
+        return al.toOwnedSlice(allocator) catch |e| {
+            al.deinit(allocator);
+            return e;
+        };
     }
 
     /// Create an owned copy of the URI with allocated strings.
@@ -658,8 +663,11 @@ pub fn resolve(allocator: Allocator, base: Uri, reference: Uri) (ParseError || A
                     // Merge paths -- mergePaths returns an owned buffer
                     const merged = try mergePaths(allocator, base, reference.path);
                     if (pathHasDotSegments(merged)) {
+                        // `defer` frees `merged` on both success and the
+                        // removeDotSegments OOM-return path (no leak), while the
+                        // no-dot-segments branch adopts it instead.
+                        defer allocator.free(merged);
                         allocated_path = try removeDotSegments(allocator, merged);
-                        allocator.free(merged);
                     } else {
                         // No dot segments: reuse the merged buffer directly
                         // instead of duplicating then freeing it
@@ -969,16 +977,22 @@ pub fn normalize(allocator: Allocator, uri_input: Uri) (ParseError || Allocator.
         // Ensure path is "/" when authority is present and path is empty
         // (for schemes like http, https, ftp, etc.)
         if (result.host != null and result.path.len == 0) {
+            // Compute the new buffer BEFORE freeing the old one: `errdefer
+            // result.deinit()` is armed, so a failed alloc after free() would
+            // double-free the dangling path.
+            const new_path = try allocator.dupe(u8, "/");
             allocator.free(result.path);
-            result.path = try allocator.dupe(u8, "/");
+            result.path = new_path;
         }
     }
 
     // Keep raw consistent with the normalized fields so raw-derived accessors
     // (e.g. authority()) are correct rather than reflecting the pre-normalized
-    // input carried over by dupe().
+    // input carried over by dupe(). Compute before freeing to stay
+    // double-free-safe under allocation failure with errdefer armed.
+    const new_raw = try result.serializeRaw(allocator);
     allocator.free(result.raw);
-    result.raw = try result.serializeRaw(allocator);
+    result.raw = new_raw;
 
     return result;
 }
@@ -2176,4 +2190,72 @@ test "normalize fast-paths preserve output" {
     try std.testing.expectEqualStrings("/api/v1/users", n.path);
     try std.testing.expectEqualStrings("q=1", n.query.?);
     try std.testing.expectEqualStrings("f", n.fragment.?);
+}
+
+test "fuzz parse/normalize/resolve does not panic" {
+    const Ctx = struct {
+        fn run(_: @This(), smith: *std.testing.Smith) anyerror!void {
+            const allocator = std.testing.allocator;
+            var buf: [256]u8 = undefined;
+            const n = smith.sliceWithHash(&buf, 0);
+            const input = buf[0..n];
+            // parse must never panic on arbitrary bytes; parse errors are fine.
+            const u = parse(input) catch return;
+            // normalize on a parsed URI must not panic or leak.
+            if (normalize(allocator, u)) |nrm_const| {
+                var nrm = nrm_const;
+                nrm.deinit(allocator);
+            } else |_| {}
+            // resolve the parsed URI against a fixed base must not panic or leak.
+            const base = parse("http://example.com/a/b/c") catch return;
+            if (resolve(allocator, base, u)) |res_const| {
+                var res = res_const;
+                res.deinit(allocator);
+            } else |_| {}
+        }
+    };
+    try std.testing.fuzz(Ctx{}, Ctx.run, .{});
+}
+
+test "normalize is double-free-safe under allocation failure" {
+    const inputs = [_][]const u8{
+        "http://h",
+        "http://h/p",
+        "HTTP://USER@EX%2eAMPLE.com:80/a/b/%2e%2e/c?Q=%41#F",
+    };
+    for (inputs) |s| {
+        const base = try parse(s);
+        var idx: usize = 0;
+        while (idx < 64) : (idx += 1) {
+            var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = idx });
+            if (normalize(fa.allocator(), base)) |res_const| {
+                var res = res_const;
+                res.deinit(fa.allocator());
+            } else |e| {
+                try std.testing.expect(e == error.OutOfMemory);
+            }
+        }
+    }
+}
+
+test "resolve is leak-safe under allocation failure" {
+    const cases = [_]struct { base: []const u8, ref: []const u8 }{
+        .{ .base = "http://a/b/c/d;p?q", .ref = "../../g" },
+        .{ .base = "http://h", .ref = "x/../../y" },
+        .{ .base = "https://example.com/a/b", .ref = "../c" },
+    };
+    for (cases) |c| {
+        const base = try parse(c.base);
+        const ref = try parse(c.ref);
+        var idx: usize = 0;
+        while (idx < 64) : (idx += 1) {
+            var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = idx });
+            if (resolve(fa.allocator(), base, ref)) |res_const| {
+                var res = res_const;
+                res.deinit(fa.allocator());
+            } else |e| {
+                try std.testing.expect(e == error.OutOfMemory);
+            }
+        }
+    }
 }

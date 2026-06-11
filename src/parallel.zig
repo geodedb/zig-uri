@@ -438,40 +438,10 @@ fn normalizeUri(allocator: std.mem.Allocator, input: []const u8) NormalizeResult
     };
     defer normalized.deinit(allocator);
 
-    // Serialize the normalized URI to a string
-    var aw = std.Io.Writer.Allocating.init(allocator);
-
-    // Estimate output size from URI components to avoid reallocation
-    const estimated = (if (normalized.scheme) |s| s.len + 1 else @as(usize, 0)) +
-        (if (normalized.host != null) @as(usize, 2) else @as(usize, 0)) +
-        (if (normalized.userinfo) |ui| ui.len + 1 else @as(usize, 0)) +
-        (if (normalized.host) |h| h.len else @as(usize, 0)) +
-        (if (normalized.raw_port) |rp| rp.len + 1 else @as(usize, 0)) +
-        normalized.path.len +
-        (if (normalized.query) |q| q.len + 1 else @as(usize, 0)) +
-        (if (normalized.fragment) |f| f.len + 1 else @as(usize, 0));
-    aw.ensureTotalCapacity(estimated) catch {
-        aw.deinit();
+    // normalize() already produced the canonical serialization in `raw`; reuse
+    // it instead of formatting the whole URI a second time.
+    const slice = allocator.dupe(u8, normalized.raw) catch {
         return .{ .normalized = null, .success = false, .error_msg = "Out of memory" };
-    };
-
-    normalized.format(&aw.writer) catch {
-        aw.deinit();
-        return .{
-            .normalized = null,
-            .success = false,
-            .error_msg = "Out of memory",
-        };
-    };
-
-    var al = aw.toArrayList();
-    const slice = al.toOwnedSlice(allocator) catch {
-        al.deinit(allocator);
-        return .{
-            .normalized = null,
-            .success = false,
-            .error_msg = "Out of memory",
-        };
     };
     return .{
         .normalized = slice,
