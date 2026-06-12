@@ -17,7 +17,7 @@
     .dependencies = .{
         // thread-pool bounded thread pool for parallel operations
         .thread_pool = .{
-            .url = "git+https://gitlab.com/devnw/zig/thread-pool.git#d45eb0a772f7c017aae088bfdd11164525362777",
+            .url = "git+https://gitlab.com/devnw/zig/thread-pool.git?ref=v0.2.5#d45eb0a772f7c017aae088bfdd11164525362777",
             .hash = "thread_pool-0.2.5-11B1BomFeQCd1mA9ZE-IdwArqRfiDhA1nGKvjLwpMjkw",
         },
     },
