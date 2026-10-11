@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-10-11
+
+### Changed
+
+- Converge on thread-pool v0.2.8 (Renovate dependency refresh).
+- CI: run default jobs on Linux runners; create GitLab Releases with the job token.
+
 ## [0.1.6] - 2026-06-11
 
 ### Changed
