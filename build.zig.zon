@@ -5,7 +5,7 @@
     .name = .uri,
 
     // Semantic versioning - https://semver.org/
-    .version = "0.1.14",
+    .version = "0.1.15",
 
     // Unique package fingerprint - do not modify
     .fingerprint = 0x841cb121b1ce5bcd,
