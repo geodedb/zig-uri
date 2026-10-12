@@ -273,7 +273,7 @@ pub const dump = debug.dump;
 pub const version = std.SemanticVersion{
     .major = 0,
     .minor = 1,
-    .patch = 15,
+    .patch = 16,
 };
 
 // =============================================================================
