@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-11-15
+
+### Changed
+
+- Converge on thread-pool v0.2.11, clearing the v0.2.9 vs v0.2.11 diamond
+  in the otel dependency tree (SONNY-6630).
+- CI: bump devnw/ci-catalog to v1.56.1 (interruptible scan and build jobs),
+  cancel obsolete branch builds, fail fast on the first blocking job
+  failure, and retire the GitLab enterprise security scanners.
+- Renovate refresh of the pre-commit hooks.
+
 ## [0.1.15] - 2026-10-11
 
 ### Changed
